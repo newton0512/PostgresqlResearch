@@ -30,6 +30,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
+      # Пути относительно каталога compose-файла (compose/)
       - ./trino/config.properties:/etc/trino/config.properties:ro
       - ./trino/jvm.config:/etc/trino/jvm.config:ro
       - ./trino/catalog/postgres.properties:/etc/trino/catalog/postgres.properties:ro

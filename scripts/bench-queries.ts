@@ -168,14 +168,18 @@ async function runTrino(table: TableVariant, runs: number): Promise<{ id: number
   return results;
 }
 
-async function main(): Promise<void> {
-  const { table, runs } = parseArgs();
-  console.log(`Queries benchmark table=${table} runs=${runs} mode=${config.bench.mode}`);
+const DEFAULT_RUNS_QUERIES = DEFAULT_RUNS;
 
+/** Run queries benchmark and write results to file. If logStream is provided (e.g. from bench:full), appends same output there. Returns path to written file. */
+export async function runQueriesBenchmark(
+  table: TableVariant,
+  runs: number = DEFAULT_RUNS_QUERIES,
+  logStream?: NodeJS.WritableStream
+): Promise<string> {
+  console.log(`Queries benchmark table=${table} runs=${runs} mode=${config.bench.mode}`);
   const stats = config.bench.mode === "trino"
     ? await runTrino(table, runs)
     : await runPostgres(table, runs);
-
   const lines = [
     "# Queries benchmark",
     `table=${getTableName(table)} mode=${config.bench.mode} runs=${runs}`,
@@ -185,16 +189,26 @@ async function main(): Promise<void> {
     ...stats.map((s) => `${String(s.id).padStart(5)} | ${s.name.padEnd(30)} | ${s.min.toFixed(2).padStart(6)} ${s.max.toFixed(2).padStart(6)} ${s.avg.toFixed(2).padStart(6)} ${s.median.toFixed(2).padStart(6)} | ${s.n}`),
   ];
   const out = lines.join("\n");
+  if (logStream) (logStream as NodeJS.WriteStream).write(out + "\n");
   const dir = join(process.cwd(), "results");
   mkdirSync(dir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const path = join(dir, `queries-benchmark-${table}-${ts}.txt`);
-  writeFileSync(path, out);
+  const outPath = join(dir, `queries-benchmark-${table}-${ts}.txt`);
+  writeFileSync(outPath, out);
   console.log(out);
-  console.log("\nWritten to", path);
+  console.log("\nWritten to", outPath);
+  return outPath;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+async function main(): Promise<void> {
+  const { table, runs } = parseArgs();
+  await runQueriesBenchmark(table, runs);
+}
+
+// Run main only when this file is the entry point (not when imported by bench-full)
+if (process.argv[1]?.includes("bench-queries")) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

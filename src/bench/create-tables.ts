@@ -97,7 +97,7 @@ export async function createPart(sql: Sql): Promise<void> {
     PARTITION BY HASH (accounted_for_bs_profile_id)
   `);
   for (let r = 0; r < 64; r++) {
-    const partName = `${escapeId(SCHEMA)}.${escapeId("bonus_registry_part")}_${r}`;
+    const partName = `${escapeId(SCHEMA)}.${escapeId("bonus_registry_part_" + r)}`;
     await sql.unsafe(`
       CREATE TABLE IF NOT EXISTS ${partName}
       PARTITION OF ${table} FOR VALUES WITH (MODULUS 64, REMAINDER ${r})
@@ -132,7 +132,7 @@ export async function createIdxPart(sql: Sql): Promise<void> {
     PARTITION BY HASH (accounted_for_bs_profile_id)
   `);
   for (let r = 0; r < 64; r++) {
-    const partName = `${escapeId(SCHEMA)}.${escapeId("bonus_registry_idx_part")}_${r}`;
+    const partName = `${escapeId(SCHEMA)}.${escapeId("bonus_registry_idx_part_" + r)}`;
     await sql.unsafe(`
       CREATE TABLE IF NOT EXISTS ${partName}
       PARTITION OF ${table} FOR VALUES WITH (MODULUS 64, REMAINDER ${r})
@@ -170,6 +170,24 @@ export async function createAllTables(sql: Sql): Promise<void> {
   await ensureSchema(sql);
   for (const v of TABLE_VARIANTS) {
     await createTable(sql, v);
+  }
+}
+
+/**
+ * Drop one bonus_registry table (and its partitions if partitioned). CASCADE to remove dependent objects.
+ */
+export async function dropTable(sql: Sql, variant: TableVariant): Promise<void> {
+  const tableName = getTableName(variant);
+  const fullName = `${escapeId(SCHEMA)}.${escapeId(tableName)}`;
+  await sql.unsafe(`DROP TABLE IF EXISTS ${fullName} CASCADE`);
+}
+
+/**
+ * Drop all four bonus_registry table variants in schema bench.
+ */
+export async function dropAllTables(sql: Sql): Promise<void> {
+  for (const v of TABLE_VARIANTS) {
+    await dropTable(sql, v);
   }
 }
 

@@ -10,6 +10,7 @@
     "compose:restart": "docker compose -f compose/docker-compose.yml restart",
     "compose:reset": "docker compose -f compose/docker-compose.yml down --volumes --remove-orphans",
     "setup:tables": "tsx scripts/setup-tables.ts",
+    "drop:tables": "tsx scripts/drop-tables.ts",
     "bench:fill": "tsx scripts/bench-fill.ts",
     "bench:read": "tsx scripts/bench-read.ts",
     "bench:queries": "tsx scripts/bench-queries.ts",

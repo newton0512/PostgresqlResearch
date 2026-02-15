@@ -9,6 +9,7 @@
 - **Режимы**: запуск всего только в **PostgreSQL** или через **Trino → PostgreSQL** (все запросы идут через Trino в ту же БД).
 - **Варианты таблиц**: `bonus_registry_plain`, `bonus_registry_part`, `bonus_registry_idx`, `bonus_registry_idx_part` в схеме `bench`.
 - **Сценарий**: создать выбранную таблицу → батчевая загрузка (до BATCH_SIZE за раунд, по умолчанию 100M) → лог времени записи → бенчмарк чтения → бенчмарк запросов → повторять, пока всего строк ≥ RECORD_MAX (по умолчанию 500M). Тест K6 на вставку одной записи запускается **отдельно** от этого сценария.
+- **Возобновление**: полный цикл `bench:full` сохраняет состояние в `logs/bench-full-state.json`; при повторном запуске с теми же параметрами уже пройденные этапы пропускаются.
 
 ## Требования
 
@@ -60,18 +61,23 @@ pnpm run bench:full -- --table plain
 | `pnpm run compose:down` | Остановить контейнеры |
 | `pnpm run compose:restart` | Перезапустить контейнеры |
 | `pnpm run setup:tables` | Создать таблицу(ы). Опции: `--table plain\|part\|idx\|idx_part` или `--all` |
-| `pnpm run bench:fill` | Батчевая загрузка. Опции: `--table`, `--count N`, `--chunk N` |
+| `pnpm run drop:tables` | Удалить таблицу(ы) в схеме bench. Опции: `--table plain\|part\|idx\|idx_part` или `--all` |
+| `pnpm run bench:fill` | Батчевая загрузка (INSERT…SELECT в PG). Опции: `--table`, `--count N`, `--batch N` (размер батча в строках, по умолчанию 5M) |
 | `pnpm run bench:read` | Бенчмарк чтения по `accounted_for_bs_profile_id`. Опции: `--table`, `--samples N` |
 | `pnpm run bench:queries` | Бенчмарк стандартных запросов. Опции: `--table`, `--runs N` |
-| `pnpm run bench:full` | Полный цикл: создать таблицу → загрузка → лог → бенчмарк чтения → бенчмарк запросов, повтор до RECORD_MAX. Опция: `--table` |
+| `pnpm run bench:full` | Полный цикл: создать таблицу → загрузка → лог → бенчмарк чтения → бенчмарк запросов, повтор до RECORD_MAX. Опции: `--table`, `--batch N` (размер батча загрузки, по умолчанию 5M). **Возобновляемый**: состояние в `logs/bench-full-state.json` — при повторном запуске с теми же параметрами выполненные этапы пропускаются. Чтобы начать с нуля — удалите файл состояния или измените `--table`/`--batch`/BATCH_SIZE/RECORD_MAX. |
 | `pnpm run api:server` | Запуск API для K6 (POST /api/insert-one) |
 | `pnpm run k6:insert-one` | Запуск K6-теста конкурентной вставки одной записи (нужны K6 и API). Результаты в `k6-results/` |
 
 **Важно**: K6 (insert-one) **не входит** в `bench:full`. Запускайте `api:server` и `k6:insert-one` отдельно, когда нужно.
 
+### Возобновление bench:full
+
+`bench:full` сохраняет прогресс в **logs/bench-full-state.json** (таблица, раунд, число строк, флаги этапов: create, fill, read, queries). При следующем запуске с теми же `--table`, `--batch`, BATCH_SIZE и RECORD_MAX уже выполненные этапы пропускаются. Чтобы начать цикл заново для тех же параметров, удалите этот файл. Смена таблицы, батча или лимитов в `.env` также приводит к новому прогону. Бенчмарки чтения и запросов выполняются в том же процессе, что и `bench:full`, чтобы гарантировать единое подключение к БД и корректный подсчёт строк.
+
 ## Куда пишутся результаты
 
-- **logs/** — логи времени записи из `bench:fill` (например `write-plain-<timestamp>.log`).
+- **logs/** — логи времени записи из `bench:fill` (например `write-plain-<timestamp>.log`), а также **logs/bench-full-state.json** — состояние полного цикла `bench:full` (таблица, раунд, количество строк, какие этапы уже выполнены). По этому файлу при повторном запуске пропускаются уже пройденные шаги.
 - **results/** — результаты бенчмарков чтения и запросов (например `read-benchmark-plain-<timestamp>.txt`, `queries-benchmark-plain-<timestamp>.txt`).
 - **k6-results/** — вывод K6 (например `insert-one-<timestamp>.json`) при запуске `k6:insert-one`.
 

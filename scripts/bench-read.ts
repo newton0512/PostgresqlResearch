@@ -46,8 +46,8 @@ async function runPostgres(table: TableVariant, samples: number): Promise<{ min:
   const tableName = getTableName(table);
   const fullTable = `"bench"."${tableName}"`;
 
-  const countResult = await sql.unsafe<{ count: string }[]>(`SELECT count(*) AS cnt FROM ${fullTable}`);
-  const rowCount = Number(countResult[0]?.count ?? 0);
+  const countResult = await sql.unsafe<{ cnt: string }[]>(`SELECT count(*) AS cnt FROM ${fullTable}`);
+  const rowCount = Number(countResult[0]?.cnt ?? 0);
   if (rowCount === 0) throw new Error(`Table ${tableName} is empty`);
 
   const percent = Math.min(100, Math.max(0.5, (samples / rowCount) * 100 * 1.5));
@@ -134,14 +134,18 @@ async function runTrino(table: TableVariant, samples: number): Promise<{ min: nu
   };
 }
 
-async function main(): Promise<void> {
-  const { table, samples } = parseArgs();
-  console.log(`Read benchmark table=${table} samples=${samples} mode=${config.bench.mode}`);
+const DEFAULT_SAMPLES_READ = DEFAULT_SAMPLES;
 
+/** Run read benchmark and write results to file. If logStream is provided (e.g. from bench:full), appends same output there. Returns path to written file. */
+export async function runReadBenchmark(
+  table: TableVariant,
+  samples: number = DEFAULT_SAMPLES_READ,
+  logStream?: NodeJS.WritableStream
+): Promise<string> {
+  console.log(`Read benchmark table=${table} samples=${samples} mode=${config.bench.mode}`);
   const stats = config.bench.mode === "trino"
     ? await runTrino(table, samples)
     : await runPostgres(table, samples);
-
   const lines = [
     `# Read benchmark (by ${PARTITION_COLUMN})`,
     `table=${getTableName(table)} mode=${config.bench.mode} samples=${samples}`,
@@ -150,16 +154,26 @@ async function main(): Promise<void> {
     `${stats.min.toFixed(2)}\t${stats.max.toFixed(2)}\t${stats.avg.toFixed(2)}\t${stats.median.toFixed(2)}\t${stats.n}`,
   ];
   const out = lines.join("\n");
+  if (logStream) (logStream as NodeJS.WriteStream).write(out + "\n");
   const dir = join(process.cwd(), "results");
   mkdirSync(dir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const path = join(dir, `read-benchmark-${table}-${ts}.txt`);
-  writeFileSync(path, out);
+  const outPath = join(dir, `read-benchmark-${table}-${ts}.txt`);
+  writeFileSync(outPath, out);
   console.log(out);
-  console.log("\nWritten to", path);
+  console.log("\nWritten to", outPath);
+  return outPath;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+async function main(): Promise<void> {
+  const { table, samples } = parseArgs();
+  await runReadBenchmark(table, samples);
+}
+
+// Run main only when this file is the entry point (not when imported by bench-full)
+if (process.argv[1]?.includes("bench-read")) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
