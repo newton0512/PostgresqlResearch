@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+logs/
+results/
+k6-results/
+.DS_Store

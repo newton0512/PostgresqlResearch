@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:18.1-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: appdb
+    ports:
+      - "5432:5432"
+    volumes:
+      # Host path for persistent data (Windows: E:\PostgresqlResearch -> E:/PostgreSQL_data)
+      - ${PG_DATA_PATH:-E:/PostgreSQL_data}:/var/lib/postgresql/data
+    command: >
+      postgres
+      -c shared_buffers=512MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=256MB
+      -c checkpoint_timeout=30min
+      -c max_wal_size=4GB
+      -c min_wal_size=1GB
+      -c wal_buffers=64MB
+      -c synchronous_commit=off
+      -c wal_writer_delay=1000ms
+      -c random_page_cost=1.1
+
+  trino:
+    image: trinodb/trino:479
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/config.properties:/etc/trino/config.properties:ro
+      - ./trino/jvm.config:/etc/trino/jvm.config:ro
+      - ./trino/catalog/postgres.properties:/etc/trino/catalog/postgres.properties:ro
+    deploy:
+      resources:
+        limits:
+          memory: 8G
