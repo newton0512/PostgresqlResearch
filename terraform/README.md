@@ -24,6 +24,11 @@ terraform plan
 terraform apply
 ```
 
+## SSH
+
+Ключ прописан пользователю **deploy** (не root). Подключение:
+`ssh -i ~/.ssh/id_rsa_terraform deploy@<data_server_public_ip>`.
+
 ## Outputs
 
 - `data_server_public_ip` — публичный IP (для Ansible и K6_API_URL)

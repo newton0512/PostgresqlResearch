@@ -91,7 +91,13 @@
           ansible.builtin.file:
             path: "{{ data_mount }}/postgres"
             state: directory
-            mode: "0755"
+            owner: "70"
+            group: "70"
+            mode: "0700"
+
+        - name: Ensure postgres data dir ownership (recursive)
+          ansible.builtin.command:
+            cmd: chown -R 70:70 "{{ data_mount }}/postgres"
 
     - name: Enable and start Docker
       ansible.builtin.systemd:
@@ -113,6 +119,13 @@
         src: docker-compose-override.yml.j2
         dest: "{{ work_dir }}/compose/docker-compose.override.yml"
 
+    # На сервере данные Postgres всегда на отдельном диске /data (не из репо)
+    - name: Set postgres data volume to data disk in base compose
+      ansible.builtin.lineinfile:
+        path: "{{ work_dir }}/compose/docker-compose.yml"
+        regexp: '^\s+-\s+.*:/var/lib/postgresql'
+        line: "      - {{ data_mount }}/postgres:/var/lib/postgresql"
+
     - name: Write Trino jvm.config
       ansible.builtin.template:
         src: trino-jvm.config.j2
@@ -128,15 +141,44 @@
         cmd: docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml up -d postgres trino
         chdir: "{{ work_dir }}"
 
-    - name: Wait for Postgres
-      ansible.builtin.shell: |
-        until docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml exec -T postgres pg_isready -U postgres; do sleep 2; done
-      args:
-        chdir: "{{ work_dir }}"
-      retries: 60
-      delay: 2
-      register: wait_pg
-      until: wait_pg.rc == 0
+    - name: Wait for Postgres (with diagnostics on failure)
+      block:
+        - name: Wait for Postgres
+          ansible.builtin.shell: |
+            docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml exec -T postgres pg_isready -U postgres
+          args:
+            chdir: "{{ work_dir }}"
+          register: wait_pg
+          until: wait_pg.rc == 0
+          retries: 15
+          delay: 2
+      rescue:
+        - name: Diagnose — docker compose ps -a
+          ansible.builtin.command:
+            cmd: docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml ps -a
+            chdir: "{{ work_dir }}"
+          register: diag_ps
+          ignore_errors: true
+
+        - name: Diagnose — postgres container logs
+          ansible.builtin.command:
+            cmd: docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml logs --tail=150 postgres
+            chdir: "{{ work_dir }}"
+          register: diag_logs
+          ignore_errors: true
+
+        - name: Show Postgres failure diagnostics
+          ansible.builtin.debug:
+            msg:
+              - "========== Postgres container is not running =========="
+              - "--- docker compose ps -a ---"
+              - "{{ (diag_ps.stdout_lines or diag_ps.stderr_lines) | default(['(no output)']) }}"
+              - "--- postgres logs (last 150 lines) ---"
+              - "{{ (diag_logs.stdout_lines or diag_logs.stderr_lines) | default(['(no output)']) }}"
+
+        - name: Fail with hint
+          ansible.builtin.fail:
+            msg: "Postgres did not become ready. Check the 'Show Postgres failure diagnostics' output above for docker compose ps -a and postgres logs."
 
     - name: Wait for Trino
       ansible.builtin.uri:

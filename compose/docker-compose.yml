@@ -8,8 +8,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      # Host path for persistent data (Windows: E:\PostgresqlResearch -> E:/PostgreSQL_data)
-      - ${PG_DATA_PATH:-E:/PostgreSQL_data}:/var/lib/postgresql/data
+      # PG_DATA_PATH: Windows e.g. E:/PostgreSQL_data; server uses override with /data/postgres. Postgres 18+ mount at /var/lib/postgresql.
+      - ${PG_DATA_PATH:-./postgres_data}:/var/lib/postgresql
     command: >
       postgres
       -c shared_buffers=512MB

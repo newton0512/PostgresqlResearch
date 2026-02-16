@@ -99,7 +99,46 @@ pnpm run bench:full -- --table plain
 
 Один сервер в Selectel VPC (flavor как data-server в samples-generation), внешний IP, доп. том для данных Postgres. Ansible монтирует том в `/data`, поднимает Postgres и Trino с «серверными» настройками Trino; API по умолчанию не запускается.
 
-1. Задайте переменные окружения (TF_VAR_*, SSH_PRIVATE_KEY, ANSIBLE_CONFIG, ANSIBLE_GROUP_VARS). См. [terraform/README.md](terraform/README.md).
+### Переменные перед развёртыванием
+
+**1. Terraform (обязательно — через окружение, секреты не в файлы):**
+```bash
+export TF_VAR_selectel_domain="533343"
+export TF_VAR_selectel_username="Newton"
+export TF_VAR_selectel_password="***"
+export TF_VAR_selectel_openstack_password="***"
+```
+
+**2. Terraform — остальное** можно задать в `terraform/terraform.tfvars` (скопировать из `terraform.tfvars.example`) или через `TF_VAR_*`:
+- `region` — регион Selectel (например `ru-9`);
+- `data_flavor_id` — flavor сервера (например `1019` — 16 vCPU / 64 GB, как data-server в samples-generation);
+- при необходимости: `availability_zone`, `disk_type`, `data_boot_disk_size_gb`, `data_volume_size_gb`, `data_volume_disk_type`, `ssh_public_key_path`.
+
+**3. Ansible (подключение по SSH):**
+```bash
+export SSH_PRIVATE_KEY=~/.ssh/id_rsa_terraform
+```
+Публичный ключ для Terraform задаётся в tfvars: `ssh_public_key_path = "~/.ssh/id_rsa_terraform.pub"`.
+
+**4. Ansible (опционально, если запускаете не из корня проекта):**
+```bash
+export ANSIBLE_CONFIG=/путь/к/PostgresqlResearch/ansible/ansible.cfg
+export ANSIBLE_GROUP_VARS=/путь/к/PostgresqlResearch/ansible/inventory/group_vars
+```
+
+**5. В `ansible/inventory/group_vars/all.yml`** при необходимости поправьте:
+- `repo_url` — URL репозитория PostgresqlResearch;
+- `repo_ref` — ветка или тег (например `main`);
+- `ansible_ssh_private_key_file` — путь к ключу, если не `~/.ssh/id_rsa_terraform`.
+
+После `terraform apply` скрипт `./scripts/refresh-inventory.sh` подставит в `all.yml` актуальный `data_public_ip` из Terraform.
+
+**SSH:** ключ в cloud-init прописан пользователю **deploy**, не root. Подключение:
+`ssh -i ~/.ssh/id_rsa_terraform deploy@<data_server_public_ip>`. Ansible настроен на `ansible_user: deploy` и `become: true`.
+
+---
+
+1. Задайте переменные окружения (п. 1–4 выше).
 2. `cd terraform && terraform init && terraform apply`
 3. Из корня проекта: `./scripts/refresh-inventory.sh` — обновит `ansible/inventory/group_vars/all.yml` и выведет строку для K6.
 4. `ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml`

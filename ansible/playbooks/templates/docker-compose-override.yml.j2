@@ -1,7 +1,8 @@
+# Postgres 18+ expects mount at /var/lib/postgresql (image uses versioned subdir, e.g. 18/)
 services:
   postgres:
     volumes:
-      - {{ data_mount }}/postgres:/var/lib/postgresql/data
+      - {{ data_mount }}/postgres:/var/lib/postgresql
   trino:
     deploy:
       resources:
