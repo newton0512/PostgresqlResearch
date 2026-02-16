@@ -16,9 +16,12 @@ api_port: 3000
 
 is_production: true
 
-trino_heap_gb: 32
+postgres_password: 'Wo;oG8V[vY(-DUR%aCY#'
+
+# Trino container 24G; heap 20G + headroom fits. max-memory-per-node + headroom <= heap
+trino_heap_gb: 20
 trino_max_direct_memory_gb: 16
-trino_max_mem_gb: 24
+trino_max_mem_gb: 20
 trino_concurrency: 16
 trino_max_worker_threads: 64
 

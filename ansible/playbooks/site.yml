@@ -136,6 +136,17 @@
         src: trino-config.properties.j2
         dest: "{{ work_dir }}/compose/trino/config.properties"
 
+    - name: Write Trino catalog postgres.properties
+      ansible.builtin.template:
+        src: trino-catalog-postgres.properties.j2
+        dest: "{{ work_dir }}/compose/trino/catalog/postgres.properties"
+
+    - name: Ensure .env on server
+      ansible.builtin.template:
+        src: env.server.j2
+        dest: "{{ work_dir }}/.env"
+        mode: "0600"
+
     - name: Start Docker Compose (postgres, trino)
       ansible.builtin.command:
         cmd: docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml up -d postgres trino
@@ -180,14 +191,43 @@
           ansible.builtin.fail:
             msg: "Postgres did not become ready. Check the 'Show Postgres failure diagnostics' output above for docker compose ps -a and postgres logs."
 
-    - name: Wait for Trino
-      ansible.builtin.uri:
-        url: http://localhost:8080/v1/info
-        status_code: 200
-      register: wait_trino
-      until: wait_trino.status == 200
-      retries: 60
-      delay: 2
+    - name: Wait for Trino (with diagnostics on failure)
+      block:
+        - name: Wait for Trino
+          ansible.builtin.uri:
+            url: http://localhost:8080/v1/info
+            status_code: 200
+          register: wait_trino
+          until: wait_trino.status == 200
+          retries: 15
+          delay: 2
+      rescue:
+        - name: Diagnose — docker compose ps -a (Trino)
+          ansible.builtin.command:
+            cmd: docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml ps -a
+            chdir: "{{ work_dir }}"
+          register: diag_trino_ps
+          ignore_errors: true
+
+        - name: Diagnose — trino container logs
+          ansible.builtin.command:
+            cmd: docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml logs --tail=150 trino
+            chdir: "{{ work_dir }}"
+          register: diag_trino_logs
+          ignore_errors: true
+
+        - name: Show Trino failure diagnostics
+          ansible.builtin.debug:
+            msg:
+              - "========== Trino did not become ready =========="
+              - "--- docker compose ps -a ---"
+              - "{{ (diag_trino_ps.stdout_lines or diag_trino_ps.stderr_lines) | default(['(no output)']) }}"
+              - "--- trino logs (last 150 lines) ---"
+              - "{{ (diag_trino_logs.stdout_lines or diag_trino_logs.stderr_lines) | default(['(no output)']) }}"
+
+        - name: Fail with hint (Trino)
+          ansible.builtin.fail:
+            msg: "Trino did not become ready. Check the 'Show Trino failure diagnostics' output above for docker compose ps -a and trino logs."
 
     - name: Install Node.js 20 (NodeSource)
       ansible.builtin.shell: |

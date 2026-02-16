@@ -1,10 +1,29 @@
 # Postgres 18+ expects mount at /var/lib/postgresql (image uses versioned subdir, e.g. 18/)
+# Server: 64GB RAM — Postgres 24G, Trino 24G
 services:
   postgres:
+    environment:
+      POSTGRES_PASSWORD: "{{ postgres_password }}"
     volumes:
       - {{ data_mount }}/postgres:/var/lib/postgresql
+    deploy:
+      resources:
+        limits:
+          memory: 24G
+    command: >
+      postgres
+      -c shared_buffers=8GB
+      -c effective_cache_size=18GB
+      -c maintenance_work_mem=1GB
+      -c checkpoint_timeout=30min
+      -c max_wal_size=4GB
+      -c min_wal_size=1GB
+      -c wal_buffers=64MB
+      -c synchronous_commit=off
+      -c wal_writer_delay=1000ms
+      -c random_page_cost=1.1
   trino:
     deploy:
       resources:
         limits:
-          memory: {% if is_production %}32G{% else %}8G{% endif %}
+          memory: {% if is_production %}24G{% else %}8G{% endif %}
