@@ -1,0 +1,29 @@
+coordinator=true
+node-scheduler.include-coordinator=true
+node.environment=production
+http-server.http.port=8080
+discovery.uri=http://localhost:8080
+
+query.max-memory={{ trino_max_mem_gb }}GB
+query.max-memory-per-node={{ trino_max_mem_gb }}GB
+query.max-total-memory={{ trino_max_mem_gb * 2 }}GB
+query.max-length=10485760
+
+http-server.http.acceptor-threads=4
+http-server.http.selector-threads=8
+http-server.threads.max=400
+http-server.threads.min=50
+
+query.client.timeout=2h
+
+task.concurrency={{ trino_concurrency }}
+task.max-worker-threads={{ trino_max_worker_threads }}
+
+{% if not is_production %}
+query-manager.required-workers=1
+query.max-run-time=15m
+query.max-execution-time=15m
+node-scheduler.max-splits-per-node=100
+node-scheduler.min-pending-splits-per-task=10
+retry-policy=TASK
+{% endif %}

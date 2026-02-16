@@ -1,0 +1,24 @@
+---
+# data_public_ip подставляет scripts/refresh-inventory.sh после terraform apply
+
+ansible_user: root
+ansible_connection: ssh
+ansible_ssh_private_key_file: "~/.ssh/id_rsa_terraform"
+
+data_public_ip: "127.0.0.1"
+
+repo_url: "https://github.com/newton0512/PostgresqlResearch.git"
+repo_ref: main
+
+data_mount: /data
+api_port: 3000
+
+is_production: true
+
+trino_heap_gb: 32
+trino_max_direct_memory_gb: 16
+trino_max_mem_gb: 24
+trino_concurrency: 16
+trino_max_worker_threads: 64
+
+k6_api_url: "http://{{ data_public_ip }}:3000"

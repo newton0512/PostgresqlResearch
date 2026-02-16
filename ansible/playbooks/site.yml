@@ -1,0 +1,195 @@
+---
+# PostgresqlResearch: один сервер — Postgres (данные на /data), Trino (серверные настройки).
+# API для K6 не запускается по умолчанию; запуск вручную.
+
+- name: PG Research server
+  hosts: data_server
+  become: true
+  vars:
+    repo_dir: /opt/PostgresqlResearch
+    work_dir: "{{ repo_dir }}"
+    postgres_host: "127.0.0.1"
+    trino_host: "127.0.0.1"
+
+  tasks:
+    - name: Install packages
+      ansible.builtin.apt:
+        update_cache: true
+        name: [ca-certificates, curl, git, jq, docker.io]
+        state: present
+
+    - name: Create keyring dir for Docker
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+        force: true
+
+    - name: Add Docker repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ ansible_architecture | replace('x86_64','amd64') }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        filename: docker
+        state: present
+      notify: Update apt cache
+
+    - name: Install docker-compose-plugin
+      ansible.builtin.apt:
+        update_cache: true
+        name: docker-compose-plugin
+        state: present
+
+    - name: Find second (data) block device
+      ansible.builtin.shell: |
+        lsblk -rnd -o NAME,TYPE | awk '$2=="disk" {print "/dev/"$1}' | sed -n '2p'
+      register: data_dev_out
+      changed_when: false
+
+    - name: Prepare data disk and mount /data
+      block:
+        - name: Check if data device has a filesystem
+          ansible.builtin.command: blkid -o value -s TYPE {{ data_dev_out.stdout }}
+          register: blkid_data
+          changed_when: false
+          failed_when: false
+          when: data_dev_out.stdout | length > 0
+
+        - name: Create ext4 on data device if unformatted
+          ansible.builtin.filesystem:
+            fstype: ext4
+            dev: "{{ data_dev_out.stdout }}"
+          when: data_dev_out.stdout | length > 0 and blkid_data.rc != 0
+
+        - name: Get UUID of data device
+          ansible.builtin.shell: "blkid -s UUID -o value {{ data_dev_out.stdout }}"
+          register: data_uuid
+          changed_when: false
+          when: data_dev_out.stdout | length > 0
+
+        - name: Create /data and add fstab
+          ansible.builtin.mount:
+            path: /data
+            src: "UUID={{ data_uuid.stdout }}"
+            fstype: ext4
+            state: mounted
+            opts: defaults,nofail
+          when: data_dev_out.stdout | length > 0 and data_uuid.stdout | length > 0
+
+        - name: Ensure /data exists (no extra disk)
+          ansible.builtin.file:
+            path: /data
+            state: directory
+            mode: "0755"
+          when: data_dev_out.stdout | length == 0
+
+        - name: Create /data/postgres
+          ansible.builtin.file:
+            path: "{{ data_mount }}/postgres"
+            state: directory
+            mode: "0755"
+
+    - name: Enable and start Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Clone or update repo
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "{{ repo_dir }}"
+        version: "{{ repo_ref }}"
+        depth: 1
+        force: true
+        update: true
+
+    - name: Write docker-compose override
+      ansible.builtin.template:
+        src: docker-compose-override.yml.j2
+        dest: "{{ work_dir }}/compose/docker-compose.override.yml"
+
+    - name: Write Trino jvm.config
+      ansible.builtin.template:
+        src: trino-jvm.config.j2
+        dest: "{{ work_dir }}/compose/trino/jvm.config"
+
+    - name: Write Trino config.properties
+      ansible.builtin.template:
+        src: trino-config.properties.j2
+        dest: "{{ work_dir }}/compose/trino/config.properties"
+
+    - name: Start Docker Compose (postgres, trino)
+      ansible.builtin.command:
+        cmd: docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml up -d postgres trino
+        chdir: "{{ work_dir }}"
+
+    - name: Wait for Postgres
+      ansible.builtin.shell: |
+        until docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml exec -T postgres pg_isready -U postgres; do sleep 2; done
+      args:
+        chdir: "{{ work_dir }}"
+      retries: 60
+      delay: 2
+      register: wait_pg
+      until: wait_pg.rc == 0
+
+    - name: Wait for Trino
+      ansible.builtin.uri:
+        url: http://localhost:8080/v1/info
+        status_code: 200
+      register: wait_trino
+      until: wait_trino.status == 200
+      retries: 60
+      delay: 2
+
+    - name: Install Node.js 20 (NodeSource)
+      ansible.builtin.shell: |
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+        apt-get install -y nodejs
+      args:
+        creates: /usr/bin/node
+
+    - name: Enable corepack and pnpm
+      ansible.builtin.shell: |
+        corepack enable
+        corepack prepare pnpm@latest --activate
+      args:
+        creates: /usr/bin/pnpm
+
+    - name: pnpm install
+      ansible.builtin.command:
+        cmd: pnpm install
+        chdir: "{{ work_dir }}"
+      environment:
+        PG_HOST: "{{ postgres_host }}"
+        TRINO_HOST: "{{ trino_host }}"
+        PG_PORT: "5432"
+        TRINO_PORT: "8080"
+        PG_DATABASE: appdb
+        TRINO_CATALOG: postgres
+        TRINO_SCHEMA: bench
+        TRINO_USER: trino
+
+    - name: Run setup:tables
+      ansible.builtin.command:
+        cmd: pnpm run setup:tables -- --all
+        chdir: "{{ work_dir }}"
+      environment:
+        PG_HOST: "{{ postgres_host }}"
+        TRINO_HOST: "{{ trino_host }}"
+        PG_PORT: "5432"
+        TRINO_PORT: "8080"
+        PG_DATABASE: appdb
+        TRINO_CATALOG: postgres
+        TRINO_SCHEMA: bench
+        TRINO_USER: trino
+
+  handlers:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true

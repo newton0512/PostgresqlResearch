@@ -1,0 +1,15 @@
+-Xmx{{ trino_heap_gb }}G
+-Xms{{ trino_heap_gb }}G
+-XX:+UseG1GC
+-XX:G1HeapRegionSize=32M
+-XX:+ExplicitGCInvokesConcurrent
+-XX:+HeapDumpOnOutOfMemoryError
+-XX:HeapDumpPath=/tmp/trino-heap-dump.hprof
+-XX:ReservedCodeCacheSize=512M
+-Djdk.attach.allowAttachSelf=true
+-XX:+ExitOnOutOfMemoryError
+-XX:MaxDirectMemorySize={{ trino_max_direct_memory_gb }}G
+{% if is_production %}
+-XX:+ParallelRefProcEnabled
+-XX:+UseStringDeduplication
+{% endif %}

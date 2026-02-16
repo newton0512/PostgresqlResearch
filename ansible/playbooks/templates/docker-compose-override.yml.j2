@@ -1,0 +1,9 @@
+services:
+  postgres:
+    volumes:
+      - {{ data_mount }}/postgres:/var/lib/postgresql/data
+  trino:
+    deploy:
+      resources:
+        limits:
+          memory: {% if is_production %}32G{% else %}8G{% endif %}

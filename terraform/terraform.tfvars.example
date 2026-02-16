@@ -1,0 +1,19 @@
+# Пример конфигурации для terraform.tfvars
+#
+# Секреты задавайте через TF_VAR_*:
+#   export TF_VAR_selectel_domain="533343"
+#   export TF_VAR_selectel_username="Newton"
+#   export TF_VAR_selectel_password="***"
+#   export TF_VAR_selectel_openstack_password="***"
+
+environment_name = "pg-research"
+region            = "ru-9"
+availability_zone = "ru-9a"
+disk_type         = "fast"
+
+data_flavor_id = "1019"   # 16 vCPU / 64GB (как data-server в samples-generation)
+data_boot_disk_size_gb = 50
+data_volume_size_gb    = 300
+data_volume_disk_type  = "fast"
+
+ssh_public_key_path = "~/.ssh/id_rsa_terraform.pub"

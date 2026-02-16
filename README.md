@@ -95,6 +95,18 @@ pnpm run bench:full -- --table plain
 | idx | Индекс по `accounted_for_bs_profile_id`, без партиционирования |
 | idx_part | Индекс и хэш-партиционирование (64 бакета) |
 
+## Развёртывание на сервере (Terraform + Ansible)
+
+Один сервер в Selectel VPC (flavor как data-server в samples-generation), внешний IP, доп. том для данных Postgres. Ansible монтирует том в `/data`, поднимает Postgres и Trino с «серверными» настройками Trino; API по умолчанию не запускается.
+
+1. Задайте переменные окружения (TF_VAR_*, SSH_PRIVATE_KEY, ANSIBLE_CONFIG, ANSIBLE_GROUP_VARS). См. [terraform/README.md](terraform/README.md).
+2. `cd terraform && terraform init && terraform apply`
+3. Из корня проекта: `./scripts/refresh-inventory.sh` — обновит `ansible/inventory/group_vars/all.yml` и выведет строку для K6.
+4. `ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml`
+5. На сервере API для K6 запускается вручную: `cd /opt/PostgresqlResearch && pnpm run api:server` (или через systemd по желанию).
+
+Для K6 с вашего ПК после шага 3: `export K6_API_URL=http://<IP>:3000` (IP выведет refresh-inventory.sh), затем `pnpm run k6:insert-one`.
+
 ## K6 insert-one (отдельно от основного сценария)
 
 1. При необходимости задайте `BENCH_MODE` и вариант таблицы в `.env`.

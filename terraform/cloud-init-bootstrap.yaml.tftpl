@@ -1,0 +1,22 @@
+#cloud-config
+
+package_update: true
+
+packages:
+  - python3
+  - python3-apt
+
+users:
+  - name: deploy
+    groups: [sudo]
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+
+ssh_authorized_keys:
+  - ${ssh_public_key}
+
+disable_root: false
+
+final_message: "Bootstrap done: deploy user, python3, SSH."
