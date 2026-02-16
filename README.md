@@ -131,6 +131,10 @@ export ANSIBLE_GROUP_VARS=/путь/к/PostgresqlResearch/ansible/inventory/grou
 - `repo_ref` — ветка или тег (например `main`);
 - `ansible_ssh_private_key_file` — путь к ключу, если не `~/.ssh/id_rsa_terraform`.
 
+**Пароль Postgres** (не храните в all.yml): задайте одним способом:
+- **Файл (рекомендуется):** скопируйте `ansible/inventory/group_vars/all_secret.example.yml` в `all_secret.yml`, подставьте пароль. Файл `all_secret.yml` в `.gitignore`.
+- **Переменная окружения:** перед запуском плейбука выполните `export POSTGRES_PASSWORD='ваш_пароль'` (или добавьте в `.env` и выполните `set -a && source .env && set +a`).
+
 После `terraform apply` скрипт `./scripts/refresh-inventory.sh` подставит в `all.yml` актуальный `data_public_ip` из Terraform.
 
 **SSH:** ключ в cloud-init прописан пользователю **deploy**, не root. Подключение:

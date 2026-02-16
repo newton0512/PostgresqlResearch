@@ -12,6 +12,32 @@
     trino_host: "127.0.0.1"
 
   tasks:
+    - name: Stat secret vars file
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../inventory/group_vars/all_secret.yml"
+      register: all_secret_file
+      run_once: true
+      delegate_to: localhost
+
+    - name: Load secret variables from file
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../inventory/group_vars/all_secret.yml"
+      when: all_secret_file.stat.exists
+      run_once: true
+      delegate_to: localhost
+
+    - name: Set postgres_password from environment
+      ansible.builtin.set_fact:
+        postgres_password: "{{ lookup('env', 'POSTGRES_PASSWORD') }}"
+      when: postgres_password is not defined or postgres_password | length == 0
+      run_once: true
+
+    - name: Fail if postgres password not set
+      ansible.builtin.fail:
+        msg: "Set postgres_password: copy inventory/group_vars/all_secret.example.yml to all_secret.yml and set postgres_password, or export POSTGRES_PASSWORD before running ansible-playbook."
+      when: postgres_password is not defined or postgres_password | length == 0
+      run_once: true
+
     - name: Install packages
       ansible.builtin.apt:
         update_cache: true

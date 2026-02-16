@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+ansible/inventory/group_vars/all_secret.yml
 *.log
 logs/
 results/

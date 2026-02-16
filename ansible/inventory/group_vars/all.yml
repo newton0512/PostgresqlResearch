@@ -16,7 +16,8 @@ api_port: 3000
 
 is_production: true
 
-postgres_password: 'Wo;oG8V[vY(-DUR%aCY#'
+# postgres_password задаётся через all_secret.yml (см. all_secret.example.yml) или через env: export POSTGRES_PASSWORD='...'
+# Не храните пароль в этом файле — он может попасть в git.
 
 # Trino container 24G; heap 20G + headroom fits. max-memory-per-node + headroom <= heap
 trino_heap_gb: 20
