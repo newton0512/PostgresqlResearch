@@ -9,7 +9,7 @@
 
 import "dotenv/config";
 import { spawn } from "child_process";
-import { createWriteStream } from "fs";
+import { createWriteStream, existsSync } from "fs";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { config } from "../src/config.js";
@@ -97,6 +97,14 @@ function initialState(table: TableVariant, recordMax: number, batchSize: number,
   };
 }
 
+/** Path to tsx so child runs directly and stdout is not buffered by pnpm. */
+function getTsxPath(): string {
+  const binDir = join(process.cwd(), "node_modules", ".bin");
+  const name = process.platform === "win32" ? "tsx.cmd" : "tsx";
+  const path = join(binDir, name);
+  return existsSync(path) ? path : "npx";
+}
+
 function runScript(
   script: string,
   extraArgs: string[] = [],
@@ -104,7 +112,9 @@ function runScript(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const env = { ...process.env, ...envOverrides };
-    const child = spawn("pnpm", ["exec", "tsx", script, ...extraArgs], {
+    const tsxPath = getTsxPath();
+    const args = tsxPath === "npx" ? ["tsx", script, ...extraArgs] : [script, ...extraArgs];
+    const child = spawn(tsxPath, args, {
       stdio: "inherit",
       shell: true,
       cwd: process.cwd(),

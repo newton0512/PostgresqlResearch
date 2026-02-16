@@ -141,7 +141,12 @@ async function runTrino(table: TableVariant, runs: number): Promise<{ id: number
   }
 
   const defs = buildQueryDefs(fullTable, params);
-  const esc = (v: string | number): string => (typeof v === "number" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
+  const esc = (v: string | number): string => {
+    if (typeof v === "number") return String(v);
+    const s = String(v).replace(/'/g, "''");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `DATE '${s}'`;
+    return `'${s}'`;
+  };
   const results: { id: number; name: string; min: number; max: number; avg: number; median: number; n: number }[] = [];
   for (const q of defs) {
     const times: number[] = [];
