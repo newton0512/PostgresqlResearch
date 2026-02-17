@@ -18,6 +18,7 @@
       register: all_secret_file
       run_once: true
       delegate_to: localhost
+      become: false
 
     - name: Load secret variables from file
       ansible.builtin.include_vars:
@@ -25,18 +26,21 @@
       when: all_secret_file.stat.exists
       run_once: true
       delegate_to: localhost
+      become: false
 
     - name: Set postgres_password from environment
       ansible.builtin.set_fact:
         postgres_password: "{{ lookup('env', 'POSTGRES_PASSWORD') }}"
       when: postgres_password is not defined or postgres_password | length == 0
       run_once: true
+      become: false
 
     - name: Fail if postgres password not set
       ansible.builtin.fail:
         msg: "Set postgres_password: copy inventory/group_vars/all_secret.example.yml to all_secret.yml and set postgres_password, or export POSTGRES_PASSWORD before running ansible-playbook."
       when: postgres_password is not defined or postgres_password | length == 0
       run_once: true
+      become: false
 
     - name: Install packages
       ansible.builtin.apt:
@@ -216,6 +220,58 @@
         - name: Fail with hint
           ansible.builtin.fail:
             msg: "Postgres did not become ready. Check the 'Show Postgres failure diagnostics' output above for docker compose ps -a and postgres logs."
+
+    # Уже инициализированная БД игнорирует POSTGRES_PASSWORD — один раз выставляем пароль (подключение со старым postgres)
+    - name: Set ALTER USER SQL for password sync
+      ansible.builtin.set_fact:
+        pg_alter_sql: "ALTER USER postgres PASSWORD '{{ postgres_password | replace(\"'\", \"''\") }}';"
+
+    - name: Write ALTER USER SQL to temp file
+      ansible.builtin.copy:
+        content: "{{ pg_alter_sql }}"
+        dest: /tmp/pg_alter_password.sql
+        mode: "0600"
+
+    - name: Sync postgres user password (for existing DB)
+      ansible.builtin.shell: |
+        cat /tmp/pg_alter_password.sql | docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml exec -T postgres env PGPASSWORD=postgres psql -U postgres
+      args:
+        chdir: "{{ work_dir }}"
+      register: pg_password_sync
+      ignore_errors: true
+
+    - name: Write password to temp file for verify
+      ansible.builtin.copy:
+        content: "{{ postgres_password }}"
+        dest: /tmp/pg_password_verify.txt
+        mode: "0600"
+      when: pg_password_sync.rc != 0
+
+    - name: Verify postgres accepts new password (when Sync skipped — DB already has new password)
+      ansible.builtin.shell: |
+        export PGPASSWORD="$(cat /tmp/pg_password_verify.txt)" && docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml exec -T postgres psql -U postgres -c "SELECT 1;"
+      args:
+        chdir: "{{ work_dir }}"
+      when: pg_password_sync.rc != 0
+      register: pg_verify_new
+      ignore_errors: true
+      changed_when: false
+
+    - name: Remove temp password file
+      ansible.builtin.file:
+        path: /tmp/pg_password_verify.txt
+        state: absent
+      when: pg_password_sync.rc != 0
+
+    - name: Fail if postgres password not in sync
+      ansible.builtin.fail:
+        msg: "Could not set or verify postgres password. Sync failed and connection with new password failed. Check Sync task error or set password manually in the container."
+      when: pg_password_sync.rc != 0 and (pg_verify_new.rc | default(1) != 0)
+
+    - name: Remove temp SQL file
+      ansible.builtin.file:
+        path: /tmp/pg_alter_password.sql
+        state: absent
 
     - name: Wait for Trino (with diagnostics on failure)
       block:
