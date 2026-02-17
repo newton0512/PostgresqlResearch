@@ -175,7 +175,10 @@ async function ensureTableExists(table: TableVariant): Promise<void> {
 
 async function main(): Promise<void> {
   const { table, count, batch } = parseArgs();
-  const { stream: logStream, path: logPath } = openLogStream(table);
+  const runLogPath = process.env.BENCH_FULL_LOG_PATH;
+  const { stream: logStream, path: logPath } = runLogPath
+    ? { stream: createWriteStream(runLogPath, { flags: "a" }), path: runLogPath }
+    : openLogStream(table);
   logStream.write(
     `# bench-fill table=${table} count=${count} batch=${batch} mode=${config.bench.mode}\n`
   );
@@ -188,7 +191,7 @@ async function main(): Promise<void> {
     await fillPostgres(table, count, batch, logStream);
   }
   logStream.end();
-  console.log("Log written to", logPath);
+  if (!runLogPath) console.log("Log written to", logPath);
 }
 
 main().catch((err) => {

@@ -106,7 +106,7 @@ export async function createPart(sql: Sql): Promise<void> {
 }
 
 /**
- * Create bonus_registry_idx: index on accounted_for_bs_profile_id, no partitioning.
+ * Create bonus_registry_idx: table only, no index (index created after fill in bench-full).
  */
 export async function createIdx(sql: Sql): Promise<void> {
   await ensureSchema(sql);
@@ -114,15 +114,10 @@ export async function createIdx(sql: Sql): Promise<void> {
   await sql.unsafe(`
     CREATE TABLE IF NOT EXISTS ${table} (${BONUS_REGISTRY_COLUMNS_DDL}, PRIMARY KEY (id))
   `);
-  await sql.unsafe(`
-    CREATE INDEX IF NOT EXISTS idx_bonus_registry_idx_accounted
-    ON ${table} (accounted_for_bs_profile_id)
-  `);
 }
 
 /**
- * Create bonus_registry_idx_part: index + hash partitioning (64 buckets).
- * Primary key must include partition key.
+ * Create bonus_registry_idx_part: partitioned table only, no index (index created after fill in bench-full).
  */
 export async function createIdxPart(sql: Sql): Promise<void> {
   await ensureSchema(sql);
@@ -138,10 +133,6 @@ export async function createIdxPart(sql: Sql): Promise<void> {
       PARTITION OF ${table} FOR VALUES WITH (MODULUS 64, REMAINDER ${r})
     `);
   }
-  await sql.unsafe(`
-    CREATE INDEX IF NOT EXISTS idx_bonus_registry_idx_part_accounted
-    ON ${table} (accounted_for_bs_profile_id)
-  `);
 }
 
 export function getTableName(variant: TableVariant): string {
@@ -150,6 +141,33 @@ export function getTableName(variant: TableVariant): string {
 
 export function getFullTableName(variant: TableVariant): string {
   return `${escapeId(SCHEMA)}.${escapeId(getTableName(variant))}`;
+}
+
+const IDX_INDEX_NAME = "idx_bonus_registry_idx_accounted";
+const IDX_PART_INDEX_NAME = "idx_bonus_registry_idx_part_accounted";
+
+/**
+ * Create index on accounted_for_bs_profile_id for idx or idx_part. No-op for plain/part.
+ */
+export async function createIndexForVariant(sql: Sql, variant: TableVariant): Promise<void> {
+  if (variant === "idx") {
+    const table = `${escapeId(SCHEMA)}.${escapeId("bonus_registry_idx")}`;
+    await sql.unsafe(`CREATE INDEX IF NOT EXISTS ${IDX_INDEX_NAME} ON ${table} (accounted_for_bs_profile_id)`);
+  } else if (variant === "idx_part") {
+    const table = `${escapeId(SCHEMA)}.${escapeId("bonus_registry_idx_part")}`;
+    await sql.unsafe(`CREATE INDEX IF NOT EXISTS ${IDX_PART_INDEX_NAME} ON ${table} (accounted_for_bs_profile_id)`);
+  }
+}
+
+/**
+ * Drop index for idx or idx_part. No-op for plain/part.
+ */
+export async function dropIndexForVariant(sql: Sql, variant: TableVariant): Promise<void> {
+  if (variant === "idx") {
+    await sql.unsafe(`DROP INDEX IF EXISTS ${escapeId(SCHEMA)}.${escapeId(IDX_INDEX_NAME)}`);
+  } else if (variant === "idx_part") {
+    await sql.unsafe(`DROP INDEX IF EXISTS ${escapeId(SCHEMA)}.${escapeId(IDX_PART_INDEX_NAME)}`);
+  }
 }
 
 const creators: Record<TableVariant, (sql: Sql) => Promise<void>> = {

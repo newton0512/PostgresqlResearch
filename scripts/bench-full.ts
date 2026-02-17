@@ -13,7 +13,14 @@ import { createWriteStream, existsSync } from "fs";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { config } from "../src/config.js";
-import { getTableName, TABLE_VARIANTS, type TableVariant } from "../src/bench/create-tables.js";
+import {
+  createIndexForVariant,
+  dropIndexForVariant,
+  getFullTableName,
+  getTableName,
+  TABLE_VARIANTS,
+  type TableVariant,
+} from "../src/bench/create-tables.js";
 import postgres from "postgres";
 import { runReadBenchmark } from "./bench-read.js";
 import { runQueriesBenchmark } from "./bench-queries.js";
@@ -157,6 +164,28 @@ async function getRowCountOrEnsureTable(table: TableVariant): Promise<number> {
   }
 }
 
+function formatMs(ms: number): string {
+  const sec = Math.floor(ms / 1000);
+  const rem = Math.round(ms % 1000);
+  return rem > 0 ? `${sec}s ${rem}ms` : `${sec}s`;
+}
+
+/** Run DDL/ANALYZE with a short-lived postgres connection. */
+async function withPg<T>(fn: (sql: ReturnType<typeof postgres>) => Promise<T>): Promise<T> {
+  const sql = postgres({
+    host: config.pg.host,
+    port: config.pg.port,
+    user: config.pg.user,
+    password: config.pg.password,
+    database: config.pg.database,
+  });
+  try {
+    return await fn(sql);
+  } finally {
+    await sql.end();
+  }
+}
+
 async function main(): Promise<void> {
   const { table, batch } = parseArgs();
   const batchSize = config.bench.batchSize;
@@ -202,6 +231,15 @@ async function main(): Promise<void> {
 
       // 2. Batch fill
       if (!state.completedThisRound.fill) {
+        // All tables: SET UNLOGGED before fill
+        await withPg(async (sql) => {
+          const fullTable = getFullTableName(table);
+          await sql.unsafe(`ALTER TABLE ${fullTable} SET UNLOGGED`);
+        });
+        // idx/idx_part only: drop index so fill runs without index
+        if (table === "idx" || table === "idx_part") {
+          await withPg((sql) => dropIndexForVariant(sql, table));
+        }
         log("Step 2: Batch fill...");
         await runScript(
           "scripts/bench-fill.ts",
@@ -215,6 +253,31 @@ async function main(): Promise<void> {
       } else {
         log("Step 2: Batch fill... skipped (already done this round).");
         state.totalRows = await getRowCountOrEnsureTable(table);
+      }
+
+      // 3. SET LOGGED (all), CREATE INDEX (idx/idx_part), ANALYZE (all) — before benchmarks; ensures correct state on resume
+      if (state.totalRows > 0 && !state.completedThisRound.read) {
+        await withPg(async (sql) => {
+          const fullTable = getFullTableName(table);
+          await sql.unsafe(`ALTER TABLE ${fullTable} SET LOGGED`);
+        });
+        if (table === "idx" || table === "idx_part") {
+          log("Step 3: Create index...");
+          const indexMs = await withPg(async (sql) => {
+            const t0 = performance.now();
+            await createIndexForVariant(sql, table);
+            return performance.now() - t0;
+          });
+          log(`Index created in ${formatMs(indexMs)} (${Math.round(indexMs)} ms)`);
+        }
+        log(table === "idx" || table === "idx_part" ? "Step 3b: ANALYZE..." : "Step 3: ANALYZE...");
+        const fullTable = getFullTableName(table);
+        const analyzeMs = await withPg(async (sql) => {
+          const t0 = performance.now();
+          await sql.unsafe(`ANALYZE ${fullTable}`);
+          return performance.now() - t0;
+        });
+        log(`ANALYZE ${fullTable} executed in ${formatMs(analyzeMs)} (${Math.round(analyzeMs)} ms)\n`);
       }
 
       // 4. Read benchmark
@@ -251,6 +314,11 @@ async function main(): Promise<void> {
         log(`\nReached RECORD_MAX (${recordMax.toLocaleString()}). Done.`);
         log(`Run log: ${runLogPath}`);
         break;
+      }
+      // idx/idx_part: drop index before next fill round (so next fill runs without index)
+      if (table === "idx" || table === "idx_part") {
+        await withPg((sql) => dropIndexForVariant(sql, table));
+        log("Dropped index for next round.");
       }
       log(`\nTotal rows ${state.totalRows.toLocaleString()} < RECORD_MAX ${recordMax.toLocaleString()}. Next round: add BATCH_SIZE.`);
       state.currentRound += 1;
