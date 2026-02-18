@@ -231,11 +231,13 @@ async function main(): Promise<void> {
 
       // 2. Batch fill
       if (!state.completedThisRound.fill) {
-        // All tables: SET UNLOGGED before fill
-        await withPg(async (sql) => {
-          const fullTable = getFullTableName(table);
-          await sql.unsafe(`ALTER TABLE ${fullTable} SET UNLOGGED`);
-        });
+        // plain/idx only: SET UNLOGGED before fill (PostgreSQL does not allow UNLOGGED on partitioned tables)
+        if (table === "plain" || table === "idx") {
+          await withPg(async (sql) => {
+            const fullTable = getFullTableName(table);
+            await sql.unsafe(`ALTER TABLE ${fullTable} SET UNLOGGED`);
+          });
+        }
         // idx/idx_part only: drop index so fill runs without index
         if (table === "idx" || table === "idx_part") {
           await withPg((sql) => dropIndexForVariant(sql, table));
@@ -255,12 +257,14 @@ async function main(): Promise<void> {
         state.totalRows = await getRowCountOrEnsureTable(table);
       }
 
-      // 3. SET LOGGED (all), CREATE INDEX (idx/idx_part), ANALYZE (all) — before benchmarks; ensures correct state on resume
+      // 3. SET LOGGED (plain/idx only; partitioned tables cannot be UNLOGGED), CREATE INDEX (idx/idx_part), ANALYZE (all)
       if (state.totalRows > 0 && !state.completedThisRound.read) {
-        await withPg(async (sql) => {
-          const fullTable = getFullTableName(table);
-          await sql.unsafe(`ALTER TABLE ${fullTable} SET LOGGED`);
-        });
+        if (table === "plain" || table === "idx") {
+          await withPg(async (sql) => {
+            const fullTable = getFullTableName(table);
+            await sql.unsafe(`ALTER TABLE ${fullTable} SET LOGGED`);
+          });
+        }
         if (table === "idx" || table === "idx_part") {
           log("Step 3: Create index...");
           const indexMs = await withPg(async (sql) => {
