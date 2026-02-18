@@ -12,6 +12,37 @@ import { config } from "../config.js";
 import { getTableName, TABLE_VARIANTS, type TableVariant } from "../bench/create-tables.js";
 import { BONUS_REGISTRY_INSERT_COLUMNS, generateRow } from "../bench/row-generator.js";
 
+type RowRecord = ReturnType<typeof generateRow>;
+
+const DATE_COLUMNS = new Set([
+  "date",
+  "departure_date",
+  "date_of_expire",
+  "doc_to_track_date",
+  "active_date",
+  "date_to_cancelled",
+  "merged_date",
+  "created_at",
+  "ingested_at",
+]);
+
+/** Merge partial row from request body with generateRow(); normalize date strings to Date. */
+function buildRowFromBody(body: Record<string, unknown>): RowRecord {
+  const base = generateRow();
+  const row = { ...base } as Record<string, string | number | boolean | Date | null>;
+  for (const key of BONUS_REGISTRY_INSERT_COLUMNS) {
+    if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
+    const v = body[key];
+    if (DATE_COLUMNS.has(key) && typeof v === "string") {
+      const d = new Date(v);
+      row[key] = isNaN(d.getTime()) ? base[key] : d;
+    } else if (v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      row[key] = v;
+    }
+  }
+  return row as RowRecord;
+}
+
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
@@ -44,19 +75,17 @@ function getTrino(): ReturnType<typeof Trino.create> {
   return trinoClient;
 }
 
-async function insertOnePostgres(table: TableVariant): Promise<void> {
+async function insertOnePostgres(table: TableVariant, row: RowRecord): Promise<void> {
   const sql = getPg();
   const tableName = getTableName(table);
   const fullTable = sql.unsafe(`"bench"."${tableName}"`);
-  const row = generateRow();
   await sql`INSERT INTO ${fullTable} ${sql([row])}`;
 }
 
-async function insertOneTrino(table: TableVariant): Promise<void> {
+async function insertOneTrino(table: TableVariant, row: RowRecord): Promise<void> {
   const trino = getTrino();
   const tableName = getTableName(table);
   const fullTable = `"${config.trino.catalog}"."bench"."${tableName}"`;
-  const row = generateRow();
   const esc = (v: string | number | boolean | Date | null): string => {
     if (v == null) return "NULL";
     if (v instanceof Date) return `TIMESTAMP '${v.toISOString().slice(0, 19).replace("T", " ")}'`;
@@ -77,11 +106,14 @@ async function insertOneTrino(table: TableVariant): Promise<void> {
 app.post("/api/insert-one", async (req, res) => {
   const table = (req.query.table ?? req.body?.table ?? config.bench.tableVariant) as string;
   const variant = TABLE_VARIANTS.includes(table as TableVariant) ? (table as TableVariant) : (config.bench.tableVariant as TableVariant);
+  const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+  const hasRowData = Object.prototype.hasOwnProperty.call(body, "id") || Object.prototype.hasOwnProperty.call(body, "amount");
+  const row = hasRowData ? buildRowFromBody(body) : generateRow();
   try {
     if (config.bench.mode === "trino") {
-      await insertOneTrino(variant);
+      await insertOneTrino(variant, row);
     } else {
-      await insertOnePostgres(variant);
+      await insertOnePostgres(variant, row);
     }
     res.status(201).json({ ok: true, table: getTableName(variant) });
   } catch (e) {

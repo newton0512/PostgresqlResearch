@@ -153,8 +153,17 @@ export ANSIBLE_GROUP_VARS=/путь/к/PostgresqlResearch/ansible/inventory/grou
 ## K6 insert-one (отдельно от основного сценария)
 
 1. При необходимости задайте `BENCH_MODE` и вариант таблицы в `.env`.
-2. Запустите API: `pnpm run api:server`
-3. Запустите K6 (установите [k6](https://k6.io/docs/get-started/installation/) или используйте Docker):  
-   `pnpm run k6:insert-one`  
-   Или: `K6_API_URL=http://host:3000 K6_VUS=20 K6_DURATION=60s k6 run k6-scripts/insert-one.js`
+2. На **сервере** запустите API: `cd /opt/PostgresqlResearch && pnpm run api:server` (порт 3000 должен быть доступен с вашего ПК).
+3. Запустите K6 **с вашего ПК** (нужен доступ к API по IP):
+   - **Через Docker** (K6 не нужно ставить локально):
+     ```bash
+     export K6_API_URL=http://94.26.236.51:3000
+     pnpm run k6:insert-one:docker
+     ```
+     Или с параметрами: `K6_API_URL=http://94.26.236.51:3000 K6_VUS=20 K6_DURATION=60s pnpm run k6:insert-one:docker`
+   - **Локально** (если [k6](https://k6.io/docs/get-started/installation/) установлен):
+     ```bash
+     export K6_API_URL=http://94.26.236.51:3000
+     pnpm run k6:insert-one
+     ```
 4. Результаты записываются в `k6-results/insert-one-<timestamp>.json`.
