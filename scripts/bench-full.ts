@@ -225,8 +225,8 @@ async function main(): Promise<void> {
       if (state.totalRows === 0) state.totalRows = await getRowCountOrEnsureTable(table);
     }
 
-    while (state.totalRows < recordMax) {
-      const toAdd = Math.min(batchSize, recordMax - state.totalRows);
+    while (state.totalRows < recordMax || !state.completedThisRound.read || !state.completedThisRound.queries) {
+      const toAdd = Math.min(batchSize, Math.max(0, recordMax - state.totalRows));
       log(`\n--- Round ${state.currentRound}: current rows ${state.totalRows.toLocaleString()}, adding ${toAdd.toLocaleString()} ---`);
 
       // 2. Batch fill
