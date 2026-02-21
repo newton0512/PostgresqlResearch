@@ -84,7 +84,9 @@ pnpm run bench:full -- --table plain
 ## Два режима
 
 1. **Только PostgreSQL** (`BENCH_MODE=postgres`): скрипты подключаются к PostgreSQL и выполняют DDL/DML напрямую.
-2. **Trino → PostgreSQL** (`BENCH_MODE=trino`): скрипты подключаются к Trino; все запросы идут в каталог `postgres`, схему `bench`. Таблицы по-прежнему создаются в PostgreSQL (например через `setup:tables`); Trino только читает и пишет в них.
+2. **Trino → PostgreSQL** (`BENCH_MODE=trino`): бенчмарки чтения и запросов выполняются через Trino; все запросы идут в каталог `postgres`, схему `bench`. Таблицы создаются в PostgreSQL.
+
+**Важно**: загрузка данных (`bench:fill`, `bench:full`) **всегда использует PostgreSQL напрямую**, независимо от режима. Trino не подходит для массовых INSERT — потребляет много памяти и падает с OOM.
 
 ## Варианты таблиц
 

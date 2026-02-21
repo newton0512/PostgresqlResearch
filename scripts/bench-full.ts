@@ -195,6 +195,7 @@ async function main(): Promise<void> {
   const log = (msg: string) => logLine(runLogStream, msg);
   log(`# bench:full table=${table} BATCH_SIZE=${batchSize} RECORD_MAX=${recordMax} fill_batch=${batch.toLocaleString()} mode=${config.bench.mode}`);
   log(`Started at ${new Date().toISOString()}`);
+  log("Fill always uses PostgreSQL directly (mode affects read/query benchmarks only).");
   log("(K6 insert-one is not part of this flow; run it separately.)\n");
 
   let state = loadState();

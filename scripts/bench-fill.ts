@@ -1,7 +1,8 @@
 /**
- * Батчевая загрузка в bonus_registry (как в samples-generation).
- * PostgreSQL: INSERT...SELECT с generate_series — данные генерируются в БД.
- * Trino: INSERT...SELECT с sequence + CROSS JOIN (как write-trino-mass) — большие батчи без лимита VALUES.
+ * Батчевая загрузка в bonus_registry.
+ * ВСЕГДА использует PostgreSQL напрямую (INSERT...SELECT с generate_series).
+ * Trino не подходит для массовых INSERT — потребляет много памяти и падает с OOM.
+ * Режим (BENCH_MODE) влияет только на бенчмарки чтения/запросов, не на загрузку.
  * Usage: pnpm run bench:fill [--table plain|part|idx|idx_part] [--count N] [--batch N]
  */
 
@@ -9,11 +10,9 @@ import "dotenv/config";
 import { mkdirSync, createWriteStream } from "fs";
 import { join } from "path";
 import postgres from "postgres";
-import { BasicAuth, Trino } from "trino-client";
 import { config } from "../src/config.js";
 import { createTable, getTableName, type TableVariant } from "../src/bench/create-tables.js";
 import { getPgInsertExpressions } from "../src/bench/pg-insert-expressions.js";
-import { getTrinoInsertExpressions } from "../src/bench/trino-insert-expressions.js";
 import { BONUS_REGISTRY_INSERT_COLUMNS } from "../src/bench/row-generator.js";
 
 const DEFAULT_BATCH_SIZE = 5_000_000;
@@ -101,63 +100,7 @@ async function fillPostgres(
   console.log(summary);
 }
 
-/** Trino: INSERT...SELECT с sequence + CROSS JOIN (как write-trino-mass). Батч до миллионов строк. */
-async function fillTrino(
-  table: TableVariant,
-  count: number,
-  batchSize: number,
-  logStream: NodeJS.WritableStream
-): Promise<void> {
-  const trino = Trino.create({
-    server: `http://${config.trino.host}:${config.trino.port}`,
-    catalog: config.trino.catalog,
-    schema: config.trino.schema,
-    auth: new BasicAuth(config.trino.user),
-  });
-  const tableName = getTableName(table);
-  const fullTable = `"${config.trino.catalog}"."bench"."${tableName}"`;
-  const columns = BONUS_REGISTRY_INSERT_COLUMNS.map((c) =>
-    c === "date" || c === "row" ? `"${c}"` : c
-  ).join(", ");
-  const columnExpressions = getTrinoInsertExpressions();
-  const SEQUENCE_LIMIT = 10_000; // Trino sequence() лимит
-  let inserted = 0;
-  const start = Date.now();
-
-  while (inserted < count) {
-    const currentBatchSize = Math.min(batchSize, count - inserted);
-    const level1Size = Math.ceil(currentBatchSize / SEQUENCE_LIMIT);
-    const selectList = columnExpressions.join(", ");
-
-    const insertSql = `
-      INSERT INTO ${fullTable} (${columns})
-      SELECT ${selectList}
-      FROM UNNEST(sequence(0, ${level1Size - 1})) AS t1(level1)
-      CROSS JOIN UNNEST(sequence(1, ${SEQUENCE_LIMIT})) AS t2(level2)
-      WHERE (CAST(level1 AS BIGINT) * BIGINT '${SEQUENCE_LIMIT}' + level2) <= ${currentBatchSize}
-    `;
-
-    const batchStart = Date.now();
-    const q = await trino.query(insertSql);
-    for await (const row of q) {
-      const r = row as { error?: { message?: string } };
-      if (r?.error) throw new Error(`Trino: ${r.error.message}`);
-    }
-    inserted += currentBatchSize;
-    const batchMs = Date.now() - batchStart;
-    const cumulativeMs = Date.now() - start;
-    const line = `variant=${tableName} batchSize=${currentBatchSize} batchTime=${formatMs(batchMs)} cumulativeTime=${formatMs(cumulativeMs)} cumulativeRows=${inserted}\n`;
-    logStream.write(line);
-    process.stdout.write(line);
-  }
-
-  const totalMs = Date.now() - start;
-  const summary = `\ntotalRows=${inserted} totalTime=${formatMs(totalMs)} rowsPerSec=${(inserted / (totalMs / 1000)).toFixed(0)}\n`;
-  logStream.write(summary);
-  console.log(summary);
-}
-
-/** Таблица создаётся в PostgreSQL; при Trino мы пишем в ту же БД. */
+/** Таблица создаётся в PostgreSQL. */
 async function ensureTableExists(table: TableVariant): Promise<void> {
   const sql = postgres({
     host: config.pg.host,
@@ -180,16 +123,13 @@ async function main(): Promise<void> {
     ? { stream: createWriteStream(runLogPath, { flags: "a" }), path: runLogPath }
     : openLogStream(table);
   logStream.write(
-    `# bench-fill table=${table} count=${count} batch=${batch} mode=${config.bench.mode}\n`
+    `# bench-fill table=${table} count=${count} batch=${batch} (always PostgreSQL, mode=${config.bench.mode} affects benchmarks only)\n`
   );
 
   await ensureTableExists(table);
 
-  if (config.bench.mode === "trino") {
-    await fillTrino(table, count, batch, logStream);
-  } else {
-    await fillPostgres(table, count, batch, logStream);
-  }
+  // Always use PostgreSQL for data loading (Trino is not suitable for bulk inserts - OOM issues)
+  await fillPostgres(table, count, batch, logStream);
   logStream.end();
   if (!runLogPath) console.log("Log written to", logPath);
 }
