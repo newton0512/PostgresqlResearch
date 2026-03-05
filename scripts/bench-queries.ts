@@ -72,7 +72,7 @@ function median(arr: number[]): number {
   return s.length % 2 ? (s[m] ?? 0) : ((s[m - 1] ?? 0) + (s[m] ?? 0)) / 2;
 }
 
-async function discoverParamsPostgres(fullTable: string): Promise<{ profileId: string; bsProfileId: string; id: string }> {
+export async function discoverParamsPostgres(fullTable: string): Promise<{ profileId: string; bsProfileId: string; id: string }> {
   const sql = postgres({
     host: config.pg.host,
     port: config.pg.port,

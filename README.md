@@ -49,6 +49,7 @@ pnpm run bench:full -- --table plain
 | BENCH_MODE | `postgres` или `trino` | postgres |
 | BATCH_SIZE | Сколько строк добавлять за один раунд загрузки | 100000000 |
 | RECORD_MAX | Остановиться, когда всего строк ≥ этого значения | 500000000 |
+| RECORD_MAX_BIG | Целевое число строк для `bench:full-big` (300M–1B) | 300000000 |
 | TABLE_VARIANT | Вариант таблицы по умолчанию | plain |
 | API_PORT | Порт API-сервера (для K6) | 3000 |
 | PG_DATA_PATH | Путь на хосте к данным PostgreSQL (Docker) | E:/PostgreSQL_data |
@@ -66,10 +67,15 @@ pnpm run bench:full -- --table plain
 | `pnpm run bench:read` | Бенчмарк чтения по `accounted_for_bs_profile_id`. Опции: `--table`, `--samples N` |
 | `pnpm run bench:queries` | Бенчмарк стандартных запросов. Опции: `--table`, `--runs N` |
 | `pnpm run bench:full` | Полный цикл: создать таблицу → загрузка → лог → бенчмарк чтения → бенчмарк запросов, повтор до RECORD_MAX. Опции: `--table`, `--batch N` (размер батча загрузки, по умолчанию 5M). **Возобновляемый**: состояние в `logs/bench-full-state.json` — при повторном запуске с теми же параметрами выполненные этапы пропускаются. Чтобы начать с нуля — удалите файл состояния или измените `--table`/`--batch`/BATCH_SIZE/RECORD_MAX. |
+| `pnpm run bench:full-big` | Один проход для большой таблицы (idx): создать таблицу без индексов → заполнение до RECORD_MAX_BIG → расширенные индексы (из indexes.txt) → ANALYZE → read/queries бенчмарки. Опции: `--batch N`, `--record-max M`. Состояние в `logs/bench-full-big-state.json`. При повторном запуске, если таблица есть — индексы удаляются, затем выполняется основной путь. K6 запускается отдельно. |
 | `pnpm run api:server` | Запуск API для K6 (POST /api/insert-one) |
 | `pnpm run k6:insert-one` | Запуск K6-теста конкурентной вставки одной записи (нужны K6 и API). Результаты в `k6-results/` |
 
 **Важно**: K6 (insert-one) **не входит** в `bench:full`. Запускайте `api:server` и `k6:insert-one` отдельно, когда нужно.
+
+### bench:full-big
+
+Сценарий для тестирования таблицы большого объёма (300M–1B строк) с расширенным набором индексов (из `indexes.txt`). Одна таблица `bonus_registry_idx`: создание без индексов → заполнение до целевого числа строк → создание всех индексов → ANALYZE → read benchmark → queries benchmark. Итераций нет. Состояние в **logs/bench-full-big-state.json**. При повторном запуске: если таблица уже есть, скрипт удаляет расширенные индексы и продолжает (дозаполнение при необходимости, затем индексы и тесты). После прогона можно запустить K6 вручную для оценки вставки при таком объёме и количестве индексов.
 
 ### Возобновление bench:full
 
@@ -77,7 +83,7 @@ pnpm run bench:full -- --table plain
 
 ## Куда пишутся результаты
 
-- **logs/** — логи времени записи из `bench:fill` (например `write-plain-<timestamp>.log`), а также **logs/bench-full-state.json** — состояние полного цикла `bench:full` (таблица, раунд, количество строк, какие этапы уже выполнены). По этому файлу при повторном запуске пропускаются уже пройденные шаги.
+- **logs/** — логи времени записи из `bench:fill` (например `write-plain-<timestamp>.log`); **logs/bench-full-state.json** — состояние `bench:full`; **logs/bench-full-big-state.json** и **logs/bench-full-big-<timestamp>.log** — состояние и лог прогона `bench:full-big`.
 - **results/** — результаты бенчмарков чтения и запросов (например `read-benchmark-plain-<timestamp>.txt`, `queries-benchmark-plain-<timestamp>.txt`).
 - **k6-results/** — вывод K6 (например `insert-one-<timestamp>.json`) при запуске `k6:insert-one`.
 
@@ -99,7 +105,7 @@ pnpm run bench:full -- --table plain
 
 ## Развёртывание на сервере (Terraform + Ansible)
 
-Один сервер в Selectel VPC (flavor как data-server в samples-generation), внешний IP, доп. том для данных Postgres. Ansible монтирует том в `/data`, поднимает Postgres и Trino с «серверными» настройками Trino; API по умолчанию не запускается.
+Один сервер в Selectel VPC (flavor 1019, как data-server в samples-generation), внешний IP, доп. том для данных Postgres (по умолчанию 1 ТБ, `data_volume_size_gb=1024`). Ansible монтирует том в `/data`, поднимает только Postgres с выделенной памятью (48G); Trino не разворачивается. API по умолчанию не запускается.
 
 ### Переменные перед развёртыванием
 
@@ -114,7 +120,7 @@ export TF_VAR_selectel_openstack_password="***"
 **2. Terraform — остальное** можно задать в `terraform/terraform.tfvars` (скопировать из `terraform.tfvars.example`) или через `TF_VAR_*`:
 - `region` — регион Selectel (например `ru-9`);
 - `data_flavor_id` — flavor сервера (например `1019` — 16 vCPU / 64 GB, как data-server в samples-generation);
-- при необходимости: `availability_zone`, `disk_type`, `data_boot_disk_size_gb`, `data_volume_size_gb`, `data_volume_disk_type`, `ssh_public_key_path`.
+- при необходимости: `availability_zone`, `disk_type`, `data_boot_disk_size_gb`, `data_volume_size_gb` (по умолчанию 1024 для bench-full_big), `data_volume_disk_type`, `ssh_public_key_path`.
 
 **3. Ansible (подключение по SSH):**
 ```bash

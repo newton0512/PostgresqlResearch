@@ -19,11 +19,4 @@ is_production: true
 # postgres_password задаётся через all_secret.yml (см. all_secret.example.yml) или через env: export POSTGRES_PASSWORD='...'
 # Не храните пароль в этом файле — он может попасть в git.
 
-# Trino container 24G; heap 20G. max-memory-per-node + headroom(~30%) must be <= heap → max_mem ~14G
-trino_heap_gb: 20
-trino_max_direct_memory_gb: 16
-trino_max_mem_gb: 14
-trino_concurrency: 16
-trino_max_worker_threads: 64
-
 k6_api_url: "http://{{ data_public_ip }}:3000"

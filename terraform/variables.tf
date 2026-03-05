@@ -41,7 +41,7 @@ variable "data_boot_disk_size_gb" {
 variable "data_volume_size_gb" {
   description = "Размер доп. тома для данных Postgres (GB). Монтируется в /data."
   type        = number
-  default     = 300
+  default     = 1024
 }
 
 variable "data_volume_disk_type" {

@@ -1,5 +1,5 @@
 ---
-# PostgresqlResearch: один сервер — Postgres (данные на /data), Trino (серверные настройки).
+# PostgresqlResearch: один сервер — Postgres (данные на /data). Trino не разворачивается; ресурсы отданы Postgres.
 # API для K6 не запускается по умолчанию; запуск вручную.
 
 - name: PG Research server
@@ -9,7 +9,6 @@
     repo_dir: /opt/PostgresqlResearch
     work_dir: "{{ repo_dir }}"
     postgres_host: "127.0.0.1"
-    trino_host: "127.0.0.1"
 
   tasks:
     - name: Stat secret vars file
@@ -156,30 +155,15 @@
         regexp: '^\s+-\s+.*:/var/lib/postgresql'
         line: "      - {{ data_mount }}/postgres:/var/lib/postgresql"
 
-    - name: Write Trino jvm.config
-      ansible.builtin.template:
-        src: trino-jvm.config.j2
-        dest: "{{ work_dir }}/compose/trino/jvm.config"
-
-    - name: Write Trino config.properties
-      ansible.builtin.template:
-        src: trino-config.properties.j2
-        dest: "{{ work_dir }}/compose/trino/config.properties"
-
-    - name: Write Trino catalog postgres.properties
-      ansible.builtin.template:
-        src: trino-catalog-postgres.properties.j2
-        dest: "{{ work_dir }}/compose/trino/catalog/postgres.properties"
-
     - name: Ensure .env on server
       ansible.builtin.template:
         src: env.server.j2
         dest: "{{ work_dir }}/.env"
         mode: "0600"
 
-    - name: Start Docker Compose (postgres, trino)
+    - name: Start Docker Compose (postgres only)
       ansible.builtin.command:
-        cmd: docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml up -d postgres trino
+        cmd: docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml up -d postgres
         chdir: "{{ work_dir }}"
 
     - name: Wait for Postgres (with diagnostics on failure)
@@ -273,44 +257,6 @@
         path: /tmp/pg_alter_password.sql
         state: absent
 
-    - name: Wait for Trino (with diagnostics on failure)
-      block:
-        - name: Wait for Trino
-          ansible.builtin.uri:
-            url: http://localhost:8080/v1/info
-            status_code: 200
-          register: wait_trino
-          until: wait_trino.status == 200
-          retries: 15
-          delay: 2
-      rescue:
-        - name: Diagnose — docker compose ps -a (Trino)
-          ansible.builtin.command:
-            cmd: docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml ps -a
-            chdir: "{{ work_dir }}"
-          register: diag_trino_ps
-          ignore_errors: true
-
-        - name: Diagnose — trino container logs
-          ansible.builtin.command:
-            cmd: docker compose -f compose/docker-compose.yml -f compose/docker-compose.override.yml logs --tail=150 trino
-            chdir: "{{ work_dir }}"
-          register: diag_trino_logs
-          ignore_errors: true
-
-        - name: Show Trino failure diagnostics
-          ansible.builtin.debug:
-            msg:
-              - "========== Trino did not become ready =========="
-              - "--- docker compose ps -a ---"
-              - "{{ (diag_trino_ps.stdout_lines or diag_trino_ps.stderr_lines) | default(['(no output)']) }}"
-              - "--- trino logs (last 150 lines) ---"
-              - "{{ (diag_trino_logs.stdout_lines or diag_trino_logs.stderr_lines) | default(['(no output)']) }}"
-
-        - name: Fail with hint (Trino)
-          ansible.builtin.fail:
-            msg: "Trino did not become ready. Check the 'Show Trino failure diagnostics' output above for docker compose ps -a and trino logs."
-
     - name: Install Node.js 20 (NodeSource)
       ansible.builtin.shell: |
         curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
@@ -331,13 +277,8 @@
         chdir: "{{ work_dir }}"
       environment:
         PG_HOST: "{{ postgres_host }}"
-        TRINO_HOST: "{{ trino_host }}"
         PG_PORT: "5432"
-        TRINO_PORT: "8080"
         PG_DATABASE: appdb
-        TRINO_CATALOG: postgres
-        TRINO_SCHEMA: bench
-        TRINO_USER: trino
 
     - name: Run setup:tables
       ansible.builtin.command:
@@ -345,13 +286,8 @@
         chdir: "{{ work_dir }}"
       environment:
         PG_HOST: "{{ postgres_host }}"
-        TRINO_HOST: "{{ trino_host }}"
         PG_PORT: "5432"
-        TRINO_PORT: "8080"
         PG_DATABASE: appdb
-        TRINO_CATALOG: postgres
-        TRINO_SCHEMA: bench
-        TRINO_USER: trino
 
   handlers:
     - name: Update apt cache

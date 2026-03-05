@@ -1,5 +1,5 @@
 # Postgres 18+ expects mount at /var/lib/postgresql (image uses versioned subdir, e.g. 18/)
-# Server: 64GB RAM — Postgres 24G, Trino 24G
+# Server: 64GB RAM — all given to Postgres (Trino not deployed)
 services:
   postgres:
     environment:
@@ -9,12 +9,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 24G
+          memory: 48G
     command: >
       postgres
-      -c shared_buffers=8GB
-      -c effective_cache_size=18GB
-      -c maintenance_work_mem=1GB
+      -c shared_buffers=16GB
+      -c effective_cache_size=36GB
+      -c maintenance_work_mem=2GB
       -c checkpoint_timeout=30min
       -c max_wal_size=4GB
       -c min_wal_size=1GB
@@ -26,8 +26,3 @@ services:
       -c max_parallel_workers_per_gather=4
       -c parallel_setup_cost=0
       -c parallel_tuple_cost=0
-  trino:
-    deploy:
-      resources:
-        limits:
-          memory: {% if is_production %}24G{% else %}8G{% endif %}

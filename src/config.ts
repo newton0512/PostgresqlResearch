@@ -19,8 +19,9 @@ export const config = {
   },
   bench: {
     mode: (process.env.BENCH_MODE ?? "postgres") as "postgres" | "trino",
-    batchSize: Number(process.env.BATCH_SIZE ?? "100000000"),
-    recordMax: Number(process.env.RECORD_MAX ?? "500000000"),
+    batchSize: Number(process.env.BATCH_SIZE ?? "10000000"),
+    recordMax: Number(process.env.RECORD_MAX ?? "50000000"),
+    recordMaxBig: Number(process.env.RECORD_MAX_BIG ?? "300000000"),
     tableVariant: (process.env.TABLE_VARIANT ?? "plain") as
       | "plain"
       | "part"
