@@ -262,12 +262,10 @@
         curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
         apt-get install -y nodejs
       args:
-        creates: /usr/bin/node
+        creates: /usr/bin/npm
 
-    - name: Enable corepack and pnpm
-      ansible.builtin.shell: |
-        corepack enable
-        corepack prepare pnpm@latest --activate
+    - name: Install pnpm globally via npm
+      ansible.builtin.shell: /usr/bin/npm install -g pnpm
       args:
         creates: /usr/bin/pnpm
 

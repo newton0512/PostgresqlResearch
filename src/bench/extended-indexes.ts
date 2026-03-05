@@ -20,52 +20,52 @@ export const EXTENDED_INDEX_DEFS: { name: string; unique: boolean; createSql: st
   {
     name: "br_idx_registrarTypeId_registrarId_row_manage_key",
     unique: true,
-    createSql: `CREATE UNIQUE INDEX IF NOT EXISTS ${escapeId(SCHEMA)}.${escapeId("br_idx_registrarTypeId_registrarId_row_manage_key")} ON ${FULL_TABLE} USING btree (registrar_type_id, registrar_id, "row", manager_id, bs_profile_id, accounted_for_bs_profile_id, first_name, first_name_latin, last_name, last_name_latin, departure_id, arrival_id, departure_date, currency_entry_id, bonus_type_id, action_source_id, bs_bonus_ticket_id, validity_time, date_of_expire, car_type_id, express_carrier_id, carrier_id, bs_partner_id, bs_train_number_id, bs_tourism_train_id, accounted_in_calculation, cancelled, bs_quota_id, doc_to_track_type_id, doc_to_track_id, doc_to_track_date)`,
+    createSql: `CREATE UNIQUE INDEX IF NOT EXISTS ${escapeId("br_idx_registrarTypeId_registrarId_row_manage_key")} ON ${FULL_TABLE} USING btree (registrar_type_id, registrar_id, "row", manager_id, bs_profile_id, accounted_for_bs_profile_id, first_name, first_name_latin, last_name, last_name_latin, departure_id, arrival_id, departure_date, currency_entry_id, bonus_type_id, action_source_id, bs_bonus_ticket_id, validity_time, date_of_expire, car_type_id, express_carrier_id, carrier_id, bs_partner_id, bs_train_number_id, bs_tourism_train_id, accounted_in_calculation, cancelled, bs_quota_id, doc_to_track_type_id, doc_to_track_id, doc_to_track_date)`,
   },
   {
     name: "br_idx_registrarTypeId_registrarId_row_key",
     unique: true,
-    createSql: `CREATE UNIQUE INDEX IF NOT EXISTS ${escapeId(SCHEMA)}.${escapeId("br_idx_registrarTypeId_registrarId_row_key")} ON ${FULL_TABLE} USING btree (registrar_type_id, registrar_id, "row")`,
+    createSql: `CREATE UNIQUE INDEX IF NOT EXISTS ${escapeId("br_idx_registrarTypeId_registrarId_row_key")} ON ${FULL_TABLE} USING btree (registrar_type_id, registrar_id, "row")`,
   },
   {
     name: "br_idx_accountedForBsProfileId_bonusTypeId_ca",
     unique: false,
-    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId(SCHEMA)}.${escapeId("br_idx_accountedForBsProfileId_bonusTypeId_ca")} ON ${FULL_TABLE} USING btree (accounted_for_bs_profile_id, bonus_type_id, cancelled, date_of_expire)`,
+    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId("br_idx_accountedForBsProfileId_bonusTypeId_ca")} ON ${FULL_TABLE} USING btree (accounted_for_bs_profile_id, bonus_type_id, cancelled, date_of_expire)`,
   },
   {
     name: "br_idx_registrarTypeId_registrarId",
     unique: false,
-    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId(SCHEMA)}.${escapeId("br_idx_registrarTypeId_registrarId")} ON ${FULL_TABLE} USING btree (registrar_type_id, registrar_id)`,
+    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId("br_idx_registrarTypeId_registrarId")} ON ${FULL_TABLE} USING btree (registrar_type_id, registrar_id)`,
   },
   {
     name: "br_idx_docToTrackTypeId_docToTrackId",
     unique: false,
-    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId(SCHEMA)}.${escapeId("br_idx_docToTrackTypeId_docToTrackId")} ON ${FULL_TABLE} USING btree (doc_to_track_type_id, doc_to_track_id)`,
+    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId("br_idx_docToTrackTypeId_docToTrackId")} ON ${FULL_TABLE} USING btree (doc_to_track_type_id, doc_to_track_id)`,
   },
   {
     name: "br_idx_date_cancelled_bonusTypeId_registrarTy",
     unique: false,
-    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId(SCHEMA)}.${escapeId("br_idx_date_cancelled_bonusTypeId_registrarTy")} ON ${FULL_TABLE} USING btree ("date", cancelled, bonus_type_id, registrar_type_id)`,
+    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId("br_idx_date_cancelled_bonusTypeId_registrarTy")} ON ${FULL_TABLE} USING btree ("date", cancelled, bonus_type_id, registrar_type_id)`,
   },
   {
     name: "br_idx_registrarTypeId_cancelled_row_bsQuotaI",
     unique: false,
-    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId(SCHEMA)}.${escapeId("br_idx_registrarTypeId_cancelled_row_bsQuotaI")} ON ${FULL_TABLE} USING btree (registrar_type_id, cancelled, "row", bs_quota_id)`,
+    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId("br_idx_registrarTypeId_cancelled_row_bsQuotaI")} ON ${FULL_TABLE} USING btree (registrar_type_id, cancelled, "row", bs_quota_id)`,
   },
   {
     name: "br_idx_dateOfExpire_cancelled_bonusTypeId",
     unique: false,
-    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId(SCHEMA)}.${escapeId("br_idx_dateOfExpire_cancelled_bonusTypeId")} ON ${FULL_TABLE} USING btree (date_of_expire, cancelled, bonus_type_id)`,
+    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId("br_idx_dateOfExpire_cancelled_bonusTypeId")} ON ${FULL_TABLE} USING btree (date_of_expire, cancelled, bonus_type_id)`,
   },
   {
     name: "br_idx_bsProfileId_cancelled",
     unique: false,
-    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId(SCHEMA)}.${escapeId("br_idx_bsProfileId_cancelled")} ON ${FULL_TABLE} USING btree (bs_profile_id, cancelled)`,
+    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId("br_idx_bsProfileId_cancelled")} ON ${FULL_TABLE} USING btree (bs_profile_id, cancelled)`,
   },
   {
     name: "br_idx_accountedForBsProfileId_cancelled",
     unique: false,
-    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId(SCHEMA)}.${escapeId("br_idx_accountedForBsProfileId_cancelled")} ON ${FULL_TABLE} USING btree (accounted_for_bs_profile_id, cancelled)`,
+    createSql: `CREATE INDEX IF NOT EXISTS ${escapeId("br_idx_accountedForBsProfileId_cancelled")} ON ${FULL_TABLE} USING btree (accounted_for_bs_profile_id, cancelled)`,
   },
 ];
 
