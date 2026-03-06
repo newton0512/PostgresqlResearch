@@ -67,7 +67,7 @@ pnpm run bench:full -- --table plain
 | `pnpm run bench:read` | Бенчмарк чтения по `accounted_for_bs_profile_id`. Опции: `--table`, `--samples N` |
 | `pnpm run bench:queries` | Бенчмарк стандартных запросов. Опции: `--table`, `--runs N` |
 | `pnpm run bench:full` | Полный цикл: создать таблицу → загрузка → лог → бенчмарк чтения → бенчмарк запросов, повтор до RECORD_MAX. Опции: `--table`, `--batch N` (размер батча загрузки, по умолчанию 5M). **Возобновляемый**: состояние в `logs/bench-full-state.json` — при повторном запуске с теми же параметрами выполненные этапы пропускаются. Чтобы начать с нуля — удалите файл состояния или измените `--table`/`--batch`/BATCH_SIZE/RECORD_MAX. |
-| `pnpm run bench:full-big` | Один проход для большой таблицы (idx): создать таблицу без индексов → заполнение до RECORD_MAX_BIG → расширенные индексы (из indexes.txt) → ANALYZE → read/queries бенчмарки. Опции: `--batch N`, `--record-max M`. Состояние в `logs/bench-full-big-state.json`. При повторном запуске, если таблица есть — индексы удаляются, затем выполняется основной путь. K6 запускается отдельно. |
+| `pnpm run bench:full-big` | Один проход для большой таблицы (idx): создать таблицу без индексов → заполнение до RECORD_MAX_BIG → расширенные индексы (из indexes.txt) → ANALYZE → read/queries бенчмарки. Опции: `--batch N`, `--record-max M`, `--drop-indexes true\|false`, `--no-drop-indexes` (не удалять индексы при повторном запуске — достраиваются только недостающие). Состояние в `logs/bench-full-big-state.json`; статистика по индексам — в `logs/bench-full-big-index-stats-<runId>.json`. При обрыве скрипта в логе и в state сохраняются фаза и возможная причина (signal, OOM, SIGHUP и т.д.). K6 запускается отдельно. |
 | `pnpm run api:server` | Запуск API для K6 (POST /api/insert-one) |
 | `pnpm run k6:insert-one` | Запуск K6-теста конкурентной вставки одной записи (нужны K6 и API). Результаты в `k6-results/` |
 
@@ -75,7 +75,11 @@ pnpm run bench:full -- --table plain
 
 ### bench:full-big
 
-Сценарий для тестирования таблицы большого объёма (300M–1B строк) с расширенным набором индексов (из `indexes.txt`). Одна таблица `bonus_registry_idx`: создание без индексов → заполнение до целевого числа строк → создание всех индексов → ANALYZE → read benchmark → queries benchmark. Итераций нет. Состояние в **logs/bench-full-big-state.json**. При повторном запуске: если таблица уже есть, скрипт удаляет расширенные индексы и продолжает (дозаполнение при необходимости, затем индексы и тесты). После прогона можно запустить K6 вручную для оценки вставки при таком объёме и количестве индексов.
+Сценарий для тестирования таблицы большого объёма (300M–1B строк) с расширенным набором индексов (из `indexes.txt`). Одна таблица `bonus_registry_idx`: создание без индексов → заполнение до целевого числа строк → создание всех индексов → ANALYZE → read benchmark → queries benchmark. Итераций нет. Состояние в **logs/bench-full-big-state.json**; по каждому индексу сохраняется статистика (время построения, статус) в **logs/bench-full-big-index-stats-&lt;runId&gt;.json**.
+
+**Повторный запуск:** по умолчанию при наличии таблицы расширенные индексы удаляются и создаются заново. С опцией **--no-drop-indexes** (или **--drop-indexes false**) индексы не удаляются: скрипт проверяет, какие уже есть, и строит только недостающие.
+
+**Обрыв работы:** в state и в логе сохраняются текущая фаза (`phase`) и при выходе по сигналу — причина (SIGTERM, SIGHUP и т.д.). Если процесс убит без обработчика (например OOM, SIGKILL), при следующем запуске выводится сообщение с последней известной фазой и возможными причинами.
 
 ### Возобновление bench:full
 
@@ -83,7 +87,7 @@ pnpm run bench:full -- --table plain
 
 ## Куда пишутся результаты
 
-- **logs/** — логи времени записи из `bench:fill` (например `write-plain-<timestamp>.log`); **logs/bench-full-state.json** — состояние `bench:full`; **logs/bench-full-big-state.json** и **logs/bench-full-big-<timestamp>.log** — состояние и лог прогона `bench:full-big`.
+- **logs/** — логи времени записи из `bench:fill` (например `write-plain-<timestamp>.log`); **logs/bench-full-state.json** — состояние `bench:full`; **logs/bench-full-big-state.json**, **logs/bench-full-big-&lt;timestamp&gt;.log** и **logs/bench-full-big-index-stats-&lt;runId&gt;.json** — состояние, лог прогона и статистика по индексам `bench:full-big`.
 - **results/** — результаты бенчмарков чтения и запросов (например `read-benchmark-plain-<timestamp>.txt`, `queries-benchmark-plain-<timestamp>.txt`).
 - **k6-results/** — вывод K6 (например `insert-one-<timestamp>.json`) при запуске `k6:insert-one`.
 
