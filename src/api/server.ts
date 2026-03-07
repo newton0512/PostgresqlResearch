@@ -1,6 +1,7 @@
 /**
- * API server for K6 insert-one benchmark.
- * POST /api/insert-one — insert one row into configured table (or all variants).
+ * API server for K6 benchmarks.
+ * POST /api/insert-one — insert one row into configured table.
+ * PATCH /api/update-one — pick a random row, update a safe field (amount); Postgres only.
  * Query or body: table=plain|part|idx|idx_part (optional, default from env).
  */
 
@@ -116,6 +117,43 @@ app.post("/api/insert-one", async (req, res) => {
       await insertOnePostgres(variant, row);
     }
     res.status(201).json({ ok: true, table: getTableName(variant) });
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+});
+
+/** Update one row: pick random by id, set only safe fields (e.g. amount — not in any unique index). */
+async function updateOnePostgres(table: TableVariant, payload: { amount?: number }): Promise<string | null> {
+  const sql = getPg();
+  const tableName = getTableName(table);
+  const fullTable = sql.unsafe(`"bench"."${tableName}"`);
+  const amount = payload.amount !== undefined ? payload.amount : Math.floor(Math.random() * 2000) - 500;
+  const rows = await sql`SELECT id FROM ${fullTable} ORDER BY random() LIMIT 1`;
+  if (rows.length === 0) return null;
+  const id = rows[0].id as string;
+  await sql`UPDATE ${fullTable} SET amount = ${amount} WHERE id = ${id}`;
+  return id;
+}
+
+app.patch("/api/update-one", async (req, res) => {
+  const table = (req.query.table ?? req.body?.table ?? config.bench.tableVariant) as string;
+  const variant = TABLE_VARIANTS.includes(table as TableVariant) ? (table as TableVariant) : (config.bench.tableVariant as TableVariant);
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const payload = { amount: typeof body.amount === "number" ? body.amount : undefined };
+  try {
+    if (config.bench.mode === "trino") {
+      res.status(501).json({ ok: false, error: "update-one not implemented for Trino" });
+      return;
+    }
+    const id = await updateOnePostgres(variant, payload);
+    if (id == null) {
+      res.status(404).json({ ok: false, error: "table is empty" });
+      return;
+    }
+    res.status(200).json({ ok: true, table: getTableName(variant), id });
   } catch (e) {
     res.status(500).json({
       ok: false,

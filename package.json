@@ -18,7 +18,9 @@
     "bench:full-big": "tsx scripts/bench-full-big.ts",
     "api:server": "tsx src/api/server.ts",
     "k6:insert-one": "k6 run k6-scripts/insert-one.js",
-    "k6:insert-one:docker": "node scripts/k6-run-docker.js"
+    "k6:insert-one:docker": "node scripts/k6-run-docker.js",
+    "k6:update-one": "k6 run k6-scripts/update-one.js",
+    "k6:insert-update-mixed": "k6 run k6-scripts/insert-update-mixed.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

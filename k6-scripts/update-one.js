@@ -1,8 +1,8 @@
 /**
- * K6 script: concurrent single-row inserts via API.
- * Sends a partial record (main fields); API merges with defaults and inserts into bench.bonus_registry_*.
- * Writes summary to k6-results/insert-one-<timestamp>.json
- * Usage: k6 run --vus 10 --duration 30s k6-scripts/insert-one.js
+ * K6 script: concurrent single-row updates via API.
+ * Server picks a random row and updates a safe field (amount — not in any unique index).
+ * Writes summary to k6-results/update-one-<timestamp>.json
+ * Usage: k6 run --vus 10 --duration 30s k6-scripts/update-one.js
  *        K6_API_URL=http://host:3000 k6 run ...
  */
 
@@ -14,36 +14,9 @@ const API_URL = __ENV.K6_API_URL || "http://localhost:3000";
 const VUS = __ENV.K6_VUS ? parseInt(__ENV.K6_VUS, 10) : 10;
 const DURATION = __ENV.K6_DURATION || "30s";
 
-/**
- * Build partial row payload. Ensures uniqueness for DB constraints:
- * - id: primary key (unique per row)
- * - (registrar_type_id, registrar_id, row): unique index br_*_registrarTypeId_registrarId_row_key
- * - (doc_to_track_type_id, doc_to_track_id): non-unique index, but doc_to_track_id should vary to avoid logical duplicates
- */
-function buildPartialRow() {
-  const now = new Date();
-  const iso = now.toISOString().slice(0, 10);
-  const suffix = now.getTime() + "-" + Math.floor(Math.random() * 10000);
-  const id = "k6-" + __VU + "-" + suffix;
-  const registrarId = "k6-reg-" + __VU + "-" + suffix;
-  const docToTrackId = "k6-doc-" + id.slice(0, 20);
-  return {
-    id: id,
-    date: now.toISOString().slice(0, 19).replace("T", " "),
-    amount: Math.floor(Math.random() * 2000) - 500,
-    accounted_for_bs_profile_id: "k6-profile-" + (__VU % 10),
-    bs_profile_id: "k6-bs-" + (__VU % 5),
-    bonus_type_id: __VU % 2 === 0 ? "premial" : "qualification",
-    cancelled: false,
-    doc_to_track_id: docToTrackId,
-    doc_to_track_type_id: "bsBonusDocument",
-    registrar_type_id: "bsBonusDocument",
-    registrar_id: registrarId,
-    row: 1,
-    action_source_id: "operator",
-    date_of_expire: iso,
-    doc_to_track_date: iso,
-  };
+/** New value for amount (safe to update — not in unique constraints). */
+function randomAmount() {
+  return Math.floor(Math.random() * 2000) - 500;
 }
 
 export const options = {
@@ -55,13 +28,13 @@ export const options = {
 };
 
 export default function () {
-  const payload = JSON.stringify(buildPartialRow());
-  const res = http.post(`${API_URL}/api/insert-one`, payload, {
-    tags: { name: "insert-one" },
+  const payload = JSON.stringify({ amount: randomAmount() });
+  const res = http.patch(`${API_URL}/api/update-one`, payload, {
+    tags: { name: "update-one" },
     headers: { "Content-Type": "application/json" },
   });
   check(res, {
-    "status 201": (r) => r.status === 201,
+    "status 200": (r) => r.status === 200,
     "body ok": (r) => {
       try {
         const b = JSON.parse(r.body);
@@ -76,7 +49,7 @@ export default function () {
 
 export function handleSummary(data) {
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const filename = "k6-results/insert-one-" + ts + ".json";
+  const filename = "k6-results/update-one-" + ts + ".json";
   return {
     [filename]: JSON.stringify(data, null, 2),
     stdout: textSummary(data, { indent: " ", enableColors: true }),

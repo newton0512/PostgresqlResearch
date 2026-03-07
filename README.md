@@ -68,8 +68,10 @@ pnpm run bench:full -- --table plain
 | `pnpm run bench:queries` | Бенчмарк стандартных запросов. Опции: `--table`, `--runs N` |
 | `pnpm run bench:full` | Полный цикл: создать таблицу → загрузка → лог → бенчмарк чтения → бенчмарк запросов, повтор до RECORD_MAX. Опции: `--table`, `--batch N` (размер батча загрузки, по умолчанию 5M). **Возобновляемый**: состояние в `logs/bench-full-state.json` — при повторном запуске с теми же параметрами выполненные этапы пропускаются. Чтобы начать с нуля — удалите файл состояния или измените `--table`/`--batch`/BATCH_SIZE/RECORD_MAX. |
 | `pnpm run bench:full-big` | Один проход для большой таблицы (idx): создать таблицу без индексов → заполнение до RECORD_MAX_BIG → расширенные индексы (из indexes.txt) → ANALYZE → read/queries бенчмарки. Опции: `--batch N`, `--record-max M`, `--drop-indexes true\|false`, `--no-drop-indexes` (не удалять индексы при повторном запуске — достраиваются только недостающие). Состояние в `logs/bench-full-big-state.json`; статистика по индексам — в `logs/bench-full-big-index-stats-<runId>.json`. При обрыве скрипта в логе и в state сохраняются фаза и возможная причина (signal, OOM, SIGHUP и т.д.). K6 запускается отдельно. |
-| `pnpm run api:server` | Запуск API для K6 (POST /api/insert-one) |
+| `pnpm run api:server` | Запуск API для K6 (POST /api/insert-one, PATCH /api/update-one) |
 | `pnpm run k6:insert-one` | Запуск K6-теста конкурентной вставки одной записи (нужны K6 и API). Результаты в `k6-results/` |
+| `pnpm run k6:update-one` | K6: конкурентное обновление случайной записи (поле amount). Таблица не должна быть пустой. |
+| `pnpm run k6:insert-update-mixed` | K6: смешанная нагрузка insert + update. Соотношение через K6_INSERT_VUS/K6_UPDATE_VUS или K6_INSERT_WEIGHT/K6_UPDATE_WEIGHT (по умолчанию 50/50). |
 
 **Важно**: K6 (insert-one) **не входит** в `bench:full`. Запускайте `api:server` и `k6:insert-one` отдельно, когда нужно.
 
@@ -89,7 +91,7 @@ pnpm run bench:full -- --table plain
 
 - **logs/** — логи времени записи из `bench:fill` (например `write-plain-<timestamp>.log`); **logs/bench-full-state.json** — состояние `bench:full`; **logs/bench-full-big-state.json**, **logs/bench-full-big-&lt;timestamp&gt;.log** и **logs/bench-full-big-index-stats-&lt;runId&gt;.json** — состояние, лог прогона и статистика по индексам `bench:full-big`.
 - **results/** — результаты бенчмарков чтения и запросов (например `read-benchmark-plain-<timestamp>.txt`, `queries-benchmark-plain-<timestamp>.txt`).
-- **k6-results/** — вывод K6 (например `insert-one-<timestamp>.json`) при запуске `k6:insert-one`.
+- **k6-results/** — вывод K6 (например `insert-one-<timestamp>.json`, `update-one-<timestamp>.json`, `insert-update-mixed-<timestamp>.json`) при запуске соответствующих скриптов.
 
 ## Два режима
 
@@ -162,7 +164,7 @@ export ANSIBLE_GROUP_VARS=/путь/к/PostgresqlResearch/ansible/inventory/grou
 
 Для K6 с вашего ПК после шага 3: `export K6_API_URL=http://<IP>:3000` (IP выведет refresh-inventory.sh), затем `pnpm run k6:insert-one`.
 
-## K6 insert-one (отдельно от основного сценария)
+## K6: insert-one, update-one, insert-update-mixed (отдельно от основного сценария)
 
 1. При необходимости задайте `BENCH_MODE` и вариант таблицы в `.env`.
 2. На **сервере** запустите API: `cd /opt/PostgresqlResearch && pnpm run api:server` (порт 3000 должен быть доступен с вашего ПК).
@@ -179,3 +181,7 @@ export ANSIBLE_GROUP_VARS=/путь/к/PostgresqlResearch/ansible/inventory/grou
      pnpm run k6:insert-one
      ```
 4. Результаты записываются в `k6-results/insert-one-<timestamp>.json`.
+
+**update-one:** обновляет случайную запись в таблице (меняется только поле `amount`, не затрагивая уникальные индексы). Таблица должна быть не пустой. Запуск: `pnpm run k6:update-one` (те же переменные `K6_API_URL`, `K6_VUS`, `K6_DURATION`).
+
+**insert-update-mixed:** два сценария в одном прогоне — часть VUs выполняет insert, часть — update. Соотношение задаётся через `K6_INSERT_VUS` и `K6_UPDATE_VUS` (например, 25 и 25) или через веса `K6_INSERT_WEIGHT`/`K6_UPDATE_WEIGHT` при заданном `K6_VUS` (по умолчанию 50/50). Запуск: `pnpm run k6:insert-update-mixed`.
