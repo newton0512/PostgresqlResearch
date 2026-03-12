@@ -1,18 +1,15 @@
 /**
- * K6 script: mixed load — concurrent inserts and updates via API.
- * Ratio is configured by scenario VUs: insert_vus vs update_vus (or by weight).
- * Writes summary to k6-results/insert-update-mixed-<timestamp>.json
+ * K6 script: mixed insert + update (50/50) with ramping VUs.
+ * Schedule:
+ *   20 min — 50 VUs
+ *   20 min — 100 VUs
+ *   20 min — 150 VUs
+ *   5 min  — 200 VUs
+ *   1 min  — 300 VUs
+ *   14 min — 15 VUs
+ * Total: 80 min.
  *
- * Usage:
- *   k6 run --duration 30s k6-scripts/insert-update-mixed.js
- *   K6_API_URL=http://host:3000 K6_INSERT_VUS=25 K6_UPDATE_VUS=25 k6 run --duration 1m k6-scripts/insert-update-mixed.js
- *   K6_INSERT_WEIGHT=70 K6_UPDATE_WEIGHT=30 k6 run --vus 50 --duration 1m k6-scripts/insert-update-mixed.js
- *
- * Env:
- *   K6_API_URL, K6_DURATION — same as insert-one/update-one
- *   K6_VUS — total VUs (default 50); used with INSERT_WEIGHT/UPDATE_WEIGHT if set
- *   K6_INSERT_VUS, K6_UPDATE_VUS — VUs per scenario (override weight)
- *   K6_INSERT_WEIGHT, K6_UPDATE_WEIGHT — e.g. 50 and 50 → 50% insert, 50% update (used when INSERT_VUS/UPDATE_VUS not set)
+ * Usage: K6_API_URL=http://host:3000 pnpm run k6:insert-update-ramp
  */
 
 import http from "k6/http";
@@ -20,16 +17,7 @@ import { check } from "k6";
 import { sleep } from "k6";
 
 const API_URL = __ENV.K6_API_URL || "http://localhost:3000";
-const DURATION = __ENV.K6_DURATION || "30s";
 const HTTP_TIMEOUT = __ENV.K6_HTTP_TIMEOUT || "120s";
-const TOTAL_VUS = __ENV.K6_VUS ? parseInt(__ENV.K6_VUS, 10) : 50;
-const INSERT_WEIGHT = __ENV.K6_INSERT_WEIGHT ? parseInt(__ENV.K6_INSERT_WEIGHT, 10) : 50;
-const UPDATE_WEIGHT = __ENV.K6_UPDATE_WEIGHT ? parseInt(__ENV.K6_UPDATE_WEIGHT, 10) : 50;
-const INSERT_VUS_ENV = __ENV.K6_INSERT_VUS;
-const UPDATE_VUS_ENV = __ENV.K6_UPDATE_VUS;
-
-const insertVus = INSERT_VUS_ENV != null ? parseInt(INSERT_VUS_ENV, 10) : Math.round((TOTAL_VUS * INSERT_WEIGHT) / (INSERT_WEIGHT + UPDATE_WEIGHT));
-const updateVus = UPDATE_VUS_ENV != null ? parseInt(UPDATE_VUS_ENV, 10) : TOTAL_VUS - insertVus;
 
 function buildPartialRow() {
   const now = new Date();
@@ -57,44 +45,38 @@ function buildPartialRow() {
   };
 }
 
-const totalVus = Math.max(2, insertVus + updateVus);
-
 export const options = {
-  vus: totalVus,
-  duration: DURATION,
-  httpReqTimeout: HTTP_TIMEOUT,
   scenarios: {
-    insert: {
-      executor: "constant-vus",
-      vus: Math.max(1, insertVus),
-      duration: DURATION,
-      exec: "doInsert",
-      startTime: "0s",
-    },
-    update: {
-      executor: "constant-vus",
-      vus: Math.max(1, updateVus),
-      duration: DURATION,
-      exec: "doUpdate",
-      startTime: "0s",
+    ramp: {
+      executor: "ramping-vus",
+      startVUs: 0,
+      stages: [
+        { duration: "20m", target: 50 },
+        { duration: "20m", target: 100 },
+        { duration: "20m", target: 150 },
+        { duration: "5m", target: 200 },
+        { duration: "1m", target: 300 },
+        { duration: "14m", target: 15 },
+      ],
+      gracefulRampDown: "30s",
+      exec: "default",
     },
   },
+  httpReqTimeout: HTTP_TIMEOUT,
   thresholds: {
     http_req_duration: ["p(95)<5000"],
   },
 };
 
-/** Used when scenarios are overridden by env (e.g. K6_VUS/K6_DURATION) and K6 falls back to default executor. */
 export default function () {
-  const threshold = insertVus / (insertVus + updateVus);
-  if (Math.random() < threshold) {
+  if (Math.random() < 0.5) {
     doInsert();
   } else {
     doUpdate();
   }
 }
 
-export function doInsert() {
+function doInsert() {
   const payload = JSON.stringify(buildPartialRow());
   const res = http.post(`${API_URL}/api/insert-one`, payload, {
     tags: { name: "insert-one" },
@@ -114,7 +96,7 @@ export function doInsert() {
   sleep(0.1);
 }
 
-export function doUpdate() {
+function doUpdate() {
   const payload = JSON.stringify({ amount: Math.floor(Math.random() * 2000) - 500 });
   const res = http.patch(`${API_URL}/api/update-one`, payload, {
     tags: { name: "update-one" },
@@ -137,7 +119,7 @@ export function doUpdate() {
 
 export function handleSummary(data) {
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const filename = "k6-results/insert-update-mixed-" + ts + ".json";
+  const filename = "k6-results/insert-update-ramp-" + ts + ".json";
   return {
     [filename]: JSON.stringify(data, null, 2),
     stdout: textSummary(data, { indent: " ", enableColors: true }),
@@ -146,7 +128,7 @@ export function handleSummary(data) {
 
 function textSummary(data, opts) {
   const indent = (opts && opts.indent) || "";
-  let out = "\n" + indent + "Summary (mixed insert + update)\n" + indent + "------\n";
+  let out = "\n" + indent + "Summary (insert-update ramp, 80 min)\n" + indent + "------\n";
   if (data.metrics) {
     const m = data.metrics;
     if (m.http_reqs) out += indent + "  http_reqs: " + (m.http_reqs.values?.count ?? 0) + "\n";

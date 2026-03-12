@@ -20,7 +20,8 @@
     "k6:insert-one": "k6 run k6-scripts/insert-one.js",
     "k6:insert-one:docker": "node scripts/k6-run-docker.js",
     "k6:update-one": "k6 run k6-scripts/update-one.js",
-    "k6:insert-update-mixed": "k6 run k6-scripts/insert-update-mixed.js"
+    "k6:insert-update-mixed": "k6 run k6-scripts/insert-update-mixed.js",
+    "k6:insert-update-ramp": "k6 run k6-scripts/insert-update-ramp.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

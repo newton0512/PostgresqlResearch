@@ -71,6 +71,7 @@ function escapeId(name: string): string {
 }
 
 export async function ensureSchema(sql: Sql): Promise<void> {
+  await sql.unsafe(`CREATE EXTENSION IF NOT EXISTS tsm_system_rows`);
   await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${escapeId(SCHEMA)}`);
 }
 

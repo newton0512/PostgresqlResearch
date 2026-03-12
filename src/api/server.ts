@@ -131,9 +131,13 @@ async function updateOnePostgres(table: TableVariant, payload: { amount?: number
   const tableName = getTableName(table);
   const fullTable = sql.unsafe(`"bench"."${tableName}"`);
   const amount = payload.amount !== undefined ? payload.amount : Math.floor(Math.random() * 2000) - 500;
-  const rows = await sql`SELECT id FROM ${fullTable} ORDER BY random() LIMIT 1`;
-  if (rows.length === 0) return null;
-  const id = rows[0].id as string;
+  const rows = await sql`
+    SELECT id FROM ${fullTable}
+    TABLESAMPLE SYSTEM_ROWS(1)
+  `;
+  const row = rows[0];
+  if (!row) return null;
+  const id = row.id as string;
   await sql`UPDATE ${fullTable} SET amount = ${amount} WHERE id = ${id}`;
   return id;
 }

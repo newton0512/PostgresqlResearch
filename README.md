@@ -72,6 +72,7 @@ pnpm run bench:full -- --table plain
 | `pnpm run k6:insert-one` | Запуск K6-теста конкурентной вставки одной записи (нужны K6 и API). Результаты в `k6-results/` |
 | `pnpm run k6:update-one` | K6: конкурентное обновление случайной записи (поле amount). Таблица не должна быть пустой. |
 | `pnpm run k6:insert-update-mixed` | K6: смешанная нагрузка insert + update. Соотношение через K6_INSERT_VUS/K6_UPDATE_VUS или K6_INSERT_WEIGHT/K6_UPDATE_WEIGHT (по умолчанию 50/50). |
+| `pnpm run k6:insert-update-ramp` | K6: микс insert+update 50/50 с рампой VUs: 20m@50 → 20m@100 → 20m@150 → 5m@200 → 1m@300 → 14m@15 (всего 80 мин). |
 
 **Важно**: K6 (insert-one) **не входит** в `bench:full`. Запускайте `api:server` и `k6:insert-one` отдельно, когда нужно.
 
@@ -91,7 +92,7 @@ pnpm run bench:full -- --table plain
 
 - **logs/** — логи времени записи из `bench:fill` (например `write-plain-<timestamp>.log`); **logs/bench-full-state.json** — состояние `bench:full`; **logs/bench-full-big-state.json**, **logs/bench-full-big-&lt;timestamp&gt;.log** и **logs/bench-full-big-index-stats-&lt;runId&gt;.json** — состояние, лог прогона и статистика по индексам `bench:full-big`.
 - **results/** — результаты бенчмарков чтения и запросов (например `read-benchmark-plain-<timestamp>.txt`, `queries-benchmark-plain-<timestamp>.txt`).
-- **k6-results/** — вывод K6 (например `insert-one-<timestamp>.json`, `update-one-<timestamp>.json`, `insert-update-mixed-<timestamp>.json`) при запуске соответствующих скриптов.
+- **k6-results/** — вывод K6 (например `insert-one-<timestamp>.json`, `update-one-<timestamp>.json`, `insert-update-mixed-<timestamp>.json`, `insert-update-ramp-<timestamp>.json`) при запуске соответствующих скриптов.
 
 ## Два режима
 

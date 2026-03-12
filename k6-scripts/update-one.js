@@ -13,6 +13,7 @@ import { sleep } from "k6";
 const API_URL = __ENV.K6_API_URL || "http://localhost:3000";
 const VUS = __ENV.K6_VUS ? parseInt(__ENV.K6_VUS, 10) : 10;
 const DURATION = __ENV.K6_DURATION || "30s";
+const HTTP_TIMEOUT = __ENV.K6_HTTP_TIMEOUT || "120s";
 
 /** New value for amount (safe to update — not in unique constraints). */
 function randomAmount() {
@@ -22,6 +23,7 @@ function randomAmount() {
 export const options = {
   vus: VUS,
   duration: DURATION,
+  httpReqTimeout: HTTP_TIMEOUT,
   thresholds: {
     http_req_duration: ["p(95)<5000"],
   },
@@ -32,6 +34,7 @@ export default function () {
   const res = http.patch(`${API_URL}/api/update-one`, payload, {
     tags: { name: "update-one" },
     headers: { "Content-Type": "application/json" },
+    timeout: HTTP_TIMEOUT,
   });
   check(res, {
     "status 200": (r) => r.status === 200,
