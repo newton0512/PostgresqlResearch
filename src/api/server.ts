@@ -133,7 +133,8 @@ async function updateOnePostgres(table: TableVariant, payload: { amount?: number
   const amount = payload.amount !== undefined ? payload.amount : Math.floor(Math.random() * 2000) - 500;
   const rows = await sql`
     SELECT id FROM ${fullTable}
-    TABLESAMPLE SYSTEM_ROWS(1)
+    TABLESAMPLE SYSTEM(1) 
+    LIMIT 1;
   `;
   const row = rows[0];
   if (!row) return null;
